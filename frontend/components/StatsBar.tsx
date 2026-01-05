@@ -1,6 +1,6 @@
 'use client';
 
-import { TrendingUp, AlertTriangle, Activity, Target } from 'lucide-react';
+import { TrendingUp, AlertTriangle, Activity, Target, LucideIcon } from 'lucide-react';
 import { DashboardStats } from '@/lib/types';
 import { formatNumber } from '@/lib/utils';
 
@@ -8,8 +8,17 @@ interface StatsBarProps {
   stats: DashboardStats;
 }
 
+interface StatCard {
+  title: string;
+  value: number;
+  icon: LucideIcon;
+  color: 'blue' | 'red' | 'green' | 'yellow';
+  subtitle?: string;
+  decimals?: number;
+}
+
 export default function StatsBar({ stats }: StatsBarProps) {
-  const statCards = [
+  const statCards: StatCard[] = [
     {
       title: 'Whales Tracked',
       value: stats.total_whales_tracked,
@@ -31,7 +40,8 @@ export default function StatsBar({ stats }: StatsBarProps) {
     },
     {
       title: 'Avg Insider Score',
-      value: stats.avg_insider_score.toFixed(1),
+      value: stats.avg_insider_score,
+      decimals: 1,
       icon: TrendingUp,
       color: 'yellow',
     },
@@ -59,7 +69,7 @@ export default function StatsBar({ stats }: StatsBarProps) {
                   {stat.title}
                 </p>
                 <p className="text-3xl font-bold text-white mt-2">
-                  {formatNumber(stat.value)}
+                  {formatNumber(stat.value, stat.decimals)}
                 </p>
                 {stat.subtitle && (
                   <p className="text-xs text-slate-500 mt-1">{stat.subtitle}</p>
