@@ -1,17 +1,18 @@
 import httpx
-import asyncio
-import os
-from datetime import datetime
 import random
+from datetime import datetime
 from typing import List, Optional
+
 from app.schemas.trader import PolymarketTradeEvent
+from app.config import get_settings
 
 
 class PolymarketClient:
     def __init__(self):
-        self.clob_api_base = os.getenv("POLYMARKET_CLOB_API", "https://clob.polymarket.com")
-        self.data_api_base = os.getenv("POLYMARKET_DATA_API", "https://data-api.polymarket.com")
-        self.mock_mode = os.getenv("MOCK_MODE", "true").lower() == "true"
+        settings = get_settings()
+        self.clob_api_base = settings.polymarket_clob_api
+        self.data_api_base = settings.polymarket_data_api
+        self.mock_mode = settings.mock_mode
         self.client = httpx.AsyncClient(timeout=30.0)
 
     async def get_recent_trades(self, limit: int = 100) -> List[dict]:

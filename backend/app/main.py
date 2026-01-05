@@ -2,16 +2,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncio
+
 from app.api.routes import router
 from app.models.database import init_db
 from app.services.data_worker import get_worker
+from app.config import get_settings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Startup and shutdown events for the FastAPI application.
-    """
+    """Startup and shutdown events for the FastAPI application."""
     # Startup
     print("[App] Initializing database...")
     await init_db()
@@ -29,6 +29,8 @@ async def lifespan(app: FastAPI):
     worker_task.cancel()
 
 
+settings = get_settings()
+
 app = FastAPI(
     title="PolyEdge API",
     description="Real-time insider detection dashboard for Polymarket",
@@ -39,7 +41,7 @@ app = FastAPI(
 # CORS middleware for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -65,15 +67,11 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    import os
-
-    host = os.getenv("API_HOST", "0.0.0.0")
-    port = int(os.getenv("API_PORT", "8000"))
 
     uvicorn.run(
         "app.main:app",
-        host=host,
-        port=port,
+        host=settings.api_host,
+        port=settings.api_port,
         reload=True,
         log_level="info"
     )

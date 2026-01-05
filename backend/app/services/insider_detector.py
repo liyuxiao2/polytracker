@@ -2,14 +2,16 @@ import numpy as np
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, List, Sequence
+
 from app.models.database import Trade, TraderProfile
-import os
+from app.config import get_settings
 
 
 class InsiderDetector:
-    def __init__(self, z_score_threshold: float = 3.0):
-        self.z_score_threshold = float(os.getenv("Z_SCORE_THRESHOLD", z_score_threshold))
+    def __init__(self, z_score_threshold: Optional[float] = None):
+        settings = get_settings()
+        self.z_score_threshold = z_score_threshold or settings.z_score_threshold
 
     async def calculate_z_score(
         self,
@@ -50,17 +52,17 @@ class InsiderDetector:
         self,
         wallet_address: str,
         session: AsyncSession
-    ) -> TraderProfile:
+    ) -> Optional[TraderProfile]:
         """
         Update or create trader profile with latest statistics.
         """
         # Get all trades for this wallet
-        result = await session.execute(
+        trades_result = await session.execute(
             select(Trade)
             .where(Trade.wallet_address == wallet_address)
             .order_by(Trade.timestamp.desc())
         )
-        trades = result.scalars().all()
+        trades = list(trades_result.scalars().all())
 
         if not trades:
             return None
@@ -70,10 +72,10 @@ class InsiderDetector:
 
         # Calculate statistics
         total_trades = len(trades)
-        avg_bet_size = np.mean(trade_sizes)
-        std_bet_size = np.std(trade_sizes) if len(trade_sizes) > 1 else 0.0
-        max_bet_size = np.max(trade_sizes)
-        total_volume = np.sum(trade_sizes)
+        avg_bet_size = float(np.mean(trade_sizes))
+        std_bet_size = float(np.std(trade_sizes)) if len(trade_sizes) > 1 else 0.0
+        max_bet_size = float(np.max(trade_sizes))
+        total_volume = float(np.sum(trade_sizes))
         flagged_count = len(flagged_trades)
 
         # Calculate insider score (0-100)
@@ -81,10 +83,10 @@ class InsiderDetector:
         insider_score = self._calculate_insider_score(trades, flagged_trades)
 
         # Get or create profile
-        result = await session.execute(
+        profile_result = await session.execute(
             select(TraderProfile).where(TraderProfile.wallet_address == wallet_address)
         )
-        profile = result.scalar_one_or_none()
+        profile = profile_result.scalar_one_or_none()
 
         if profile:
             profile.total_trades = total_trades
@@ -113,7 +115,7 @@ class InsiderDetector:
         await session.refresh(profile)
         return profile
 
-    def _calculate_insider_score(self, all_trades: list, flagged_trades: list) -> float:
+    def _calculate_insider_score(self, all_trades: Sequence[Trade], flagged_trades: List[Trade]) -> float:
         """
         Calculate insider confidence score (0-100).
         Higher score = more suspicious activity.
@@ -127,9 +129,11 @@ class InsiderDetector:
 
         # Component 2: Average Z-score of flagged trades (0-30 points)
         if flagged_trades:
-            avg_z_score = np.mean([t.z_score for t in flagged_trades if t.z_score])
-            # Normalize: z-score of 3 = 10 points, 6 = 20, 9+ = 30
-            score += min(avg_z_score / 9 * 30, 30)
+            z_scores = [t.z_score for t in flagged_trades if t.z_score is not None]
+            if z_scores:
+                avg_z_score = float(np.mean(z_scores))
+                # Normalize: z-score of 3 = 10 points, 6 = 20, 9+ = 30
+                score += min(avg_z_score / 9 * 30, 30)
 
         # Component 3: Recency of flagged trades (0-30 points)
         recent_trades = [t for t in all_trades if
@@ -146,7 +150,7 @@ class InsiderDetector:
         session: AsyncSession,
         min_size: float = 5000,
         hours: int = 24
-    ) -> list:
+    ) -> Sequence[Trade]:
         """
         Get recent trades that are flagged or exceed minimum size.
         """

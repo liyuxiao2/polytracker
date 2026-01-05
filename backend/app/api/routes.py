@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List
+
 from app.models.database import get_session, Trade, TraderProfile
 from app.schemas.trader import (
     TraderProfileResponse,
@@ -127,7 +128,6 @@ async def get_trader_profile(
         profile = result.scalar_one_or_none()
 
     if not profile:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Trader not found")
 
     return TraderProfileResponse.model_validate(profile)

@@ -1,17 +1,19 @@
 import asyncio
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.database import Trade, async_session_maker
 from app.services.polymarket_client import PolymarketClient
 from app.services.insider_detector import InsiderDetector
-import os
+from app.config import get_settings
 
 
 class DataIngestionWorker:
     def __init__(self):
+        settings = get_settings()
         self.client = PolymarketClient()
         self.detector = InsiderDetector()
-        self.poll_interval = int(os.getenv("POLL_INTERVAL_SECONDS", "30"))
+        self.poll_interval = settings.poll_interval_seconds
         self.is_running = False
 
     async def start(self):

@@ -1,44 +1,49 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import declarative_base
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import String, Float, DateTime, Boolean
 from datetime import datetime
-import os
+from typing import Optional, AsyncGenerator
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./polyedge.db")
+from app.config import get_settings
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+settings = get_settings()
+
+engine = create_async_engine(settings.database_url, echo=False)
 async_session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-Base = declarative_base()
+
+
+class Base(DeclarativeBase):
+    pass
 
 
 class Trade(Base):
     __tablename__ = "trades"
 
-    id = Column(Integer, primary_key=True, index=True)
-    wallet_address = Column(String, index=True, nullable=False)
-    market_id = Column(String, index=True, nullable=False)
-    market_name = Column(String, nullable=False)
-    trade_size_usd = Column(Float, nullable=False)
-    outcome = Column(String, nullable=True)
-    price = Column(Float, nullable=True)
-    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
-    is_flagged = Column(Boolean, default=False)
-    z_score = Column(Float, nullable=True)
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    wallet_address: Mapped[str] = mapped_column(String, index=True)
+    market_id: Mapped[str] = mapped_column(String, index=True)
+    market_name: Mapped[str] = mapped_column(String)
+    trade_size_usd: Mapped[float] = mapped_column(Float)
+    outcome: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    is_flagged: Mapped[bool] = mapped_column(Boolean, default=False)
+    z_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
 
 class TraderProfile(Base):
     __tablename__ = "trader_profiles"
 
-    id = Column(Integer, primary_key=True, index=True)
-    wallet_address = Column(String, unique=True, index=True, nullable=False)
-    total_trades = Column(Integer, default=0)
-    avg_bet_size = Column(Float, default=0.0)
-    std_bet_size = Column(Float, default=0.0)
-    max_bet_size = Column(Float, default=0.0)
-    total_volume = Column(Float, default=0.0)
-    insider_score = Column(Float, default=0.0)  # 0-100
-    last_updated = Column(DateTime, default=datetime.utcnow)
-    flagged_trades_count = Column(Integer, default=0)
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    wallet_address: Mapped[str] = mapped_column(String, unique=True, index=True)
+    total_trades: Mapped[int] = mapped_column(default=0)
+    avg_bet_size: Mapped[float] = mapped_column(Float, default=0.0)
+    std_bet_size: Mapped[float] = mapped_column(Float, default=0.0)
+    max_bet_size: Mapped[float] = mapped_column(Float, default=0.0)
+    total_volume: Mapped[float] = mapped_column(Float, default=0.0)
+    insider_score: Mapped[float] = mapped_column(Float, default=0.0)  # 0-100
+    last_updated: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    flagged_trades_count: Mapped[int] = mapped_column(default=0)
 
 
 async def init_db():
@@ -46,6 +51,6 @@ async def init_db():
         await conn.run_sync(Base.metadata.create_all)
 
 
-async def get_session() -> AsyncSession:
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_maker() as session:
         yield session
