@@ -14,6 +14,8 @@ export interface TrendingTrade {
   z_score: number;
   timestamp: string;
   deviation_percentage: number;
+  is_win: boolean | null;
+  flag_reason: string | null;
 }
 
 export interface TraderProfile {

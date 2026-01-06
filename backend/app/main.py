@@ -6,6 +6,7 @@ import asyncio
 from app.api.routes import router
 from app.models.database import init_db
 from app.services.data_worker import get_worker
+from app.services.resolution_checker import get_resolution_checker
 from app.config import get_settings
 
 
@@ -20,13 +21,21 @@ async def lifespan(app: FastAPI):
     worker = await get_worker()
     worker_task = asyncio.create_task(worker.start())
 
+    print("[App] Starting resolution checker...")
+    resolution_checker = await get_resolution_checker()
+    resolution_task = asyncio.create_task(resolution_checker.start())
+
     yield
 
     # Shutdown
-    print("[App] Shutting down background worker...")
+    print("[App] Shutting down services...")
     worker = await get_worker()
     await worker.stop()
     worker_task.cancel()
+
+    resolution_checker = await get_resolution_checker()
+    await resolution_checker.stop()
+    resolution_task.cancel()
 
 
 settings = get_settings()

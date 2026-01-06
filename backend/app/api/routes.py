@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, and_
 from datetime import datetime, timedelta
 from typing import List
 
@@ -51,7 +51,9 @@ async def get_flagged_traders(
             insider_score=profile.insider_score,
             total_trades=profile.total_trades,
             avg_bet_size=profile.avg_bet_size,
+            win_rate=profile.win_rate,
             flagged_trades_count=profile.flagged_trades_count,
+            flagged_wins_count=profile.flagged_wins_count,
             last_trade_time=last_trade
         ))
 
@@ -66,15 +68,21 @@ async def get_trending_trades(
     session: AsyncSession = Depends(get_session)
 ):
     """
-    Get real-time stream of trades filtered by size or high deviation.
+    Get real-time stream of trades filtered by size, high deviation, or winning large bets.
     """
     cutoff_time = datetime.utcnow() - timedelta(hours=hours)
 
     result = await session.execute(
         select(Trade)
         .where(
-            (Trade.timestamp >= cutoff_time) &
-            ((Trade.is_flagged == True) | (Trade.trade_size_usd >= min_size))
+            and_(
+                Trade.timestamp >= cutoff_time,
+                (
+                    (Trade.is_flagged == True) |
+                    (Trade.trade_size_usd >= min_size) |
+                    ((Trade.is_win == True) & (Trade.trade_size_usd >= 10000))  # Large winning bets
+                )
+            )
         )
         .order_by(desc(Trade.timestamp))
         .limit(limit)
@@ -100,7 +108,9 @@ async def get_trending_trades(
             trade_size_usd=trade.trade_size_usd,
             z_score=trade.z_score or 0.0,
             timestamp=trade.timestamp,
-            deviation_percentage=deviation_pct
+            deviation_percentage=deviation_pct,
+            is_win=trade.is_win,
+            flag_reason=trade.flag_reason
         ))
 
     return trending
@@ -122,6 +132,7 @@ async def get_trader_profile(
     if not profile:
         # If no profile exists, update it
         await detector.update_trader_profile(address, session)
+        await session.commit()
         result = await session.execute(
             select(TraderProfile).where(TraderProfile.wallet_address == address)
         )
@@ -167,13 +178,15 @@ async def get_dashboard_stats(
     )
     total_whales = whales_result.scalar() or 0
 
-    # High-signal alerts today
+    # High-signal alerts today (flagged trades)
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     alerts_result = await session.execute(
         select(func.count(Trade.id))
         .where(
-            (Trade.is_flagged == True) &
-            (Trade.timestamp >= today_start)
+            and_(
+                Trade.is_flagged == True,
+                Trade.timestamp >= today_start
+            )
         )
     )
     alerts_today = alerts_result.scalar() or 0
@@ -184,15 +197,31 @@ async def get_dashboard_stats(
     )
     total_trades = total_trades_result.scalar() or 0
 
+    # Total resolved trades
+    resolved_result = await session.execute(
+        select(func.count(Trade.id))
+        .where(Trade.is_resolved == True)
+    )
+    total_resolved = resolved_result.scalar() or 0
+
     # Average insider score
     avg_score_result = await session.execute(
         select(func.avg(TraderProfile.insider_score))
     )
     avg_score = avg_score_result.scalar() or 0.0
 
+    # Average win rate (only for traders with resolved trades)
+    avg_win_rate_result = await session.execute(
+        select(func.avg(TraderProfile.win_rate))
+        .where(TraderProfile.resolved_trades >= 5)
+    )
+    avg_win_rate = avg_win_rate_result.scalar() or 0.0
+
     return DashboardStats(
         total_whales_tracked=total_whales,
         high_signal_alerts_today=alerts_today,
         total_trades_monitored=total_trades,
-        avg_insider_score=float(avg_score)
+        avg_insider_score=float(avg_score),
+        total_resolved_trades=total_resolved,
+        avg_win_rate=float(avg_win_rate)
     )

@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+from typing import Optional
 
 
 class Settings(BaseSettings):
@@ -12,9 +13,20 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
 
-    # Polymarket API
+    # Polymarket APIs
     polymarket_clob_api: str = "https://clob.polymarket.com"
+    polymarket_gamma_api: str = "https://gamma-api.polymarket.com"
     polymarket_data_api: str = "https://data-api.polymarket.com"
+
+    # Polymarket API Authentication (for authenticated endpoints)
+    # To get these credentials:
+    # 1. Use py-clob-client: client.create_or_derive_api_creds()
+    # 2. Or generate from your Polygon wallet private key
+    polymarket_api_key: Optional[str] = None
+    polymarket_api_secret: Optional[str] = None
+    polymarket_api_passphrase: Optional[str] = None
+
+    # Mock mode - set to False to use real APIs
     mock_mode: bool = True
 
     # Worker settings

@@ -10,3 +10,7 @@ numpy==1.26.3
 scipy==1.11.4
 aiosqlite==0.19.0
 greenlet==3.2.4
+
+# Optional: For generating Polymarket API credentials
+# pip install py-clob-client
+# py-clob-client>=0.16.0

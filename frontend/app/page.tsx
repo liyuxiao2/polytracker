@@ -126,8 +126,8 @@ export default function Dashboard() {
                   <h2 className="text-lg font-semibold text-white mb-4">
                     Top Suspicious Traders
                   </h2>
-                  <div className="space-y-3">
-                    {traders.slice(0, 10).map((trader) => (
+                  <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
+                    {traders.slice(0, 50).map((trader) => (
                       <button
                         key={trader.wallet_address}
                         onClick={() => setSelectedTrader(trader.wallet_address)}
