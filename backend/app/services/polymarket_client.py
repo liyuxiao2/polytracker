@@ -1,107 +1,141 @@
 import httpx
-import asyncio
 import os
-from datetime import datetime
-import random
 from typing import List, Optional
-from app.schemas.trader import PolymarketTradeEvent
 
 
 class PolymarketClient:
     def __init__(self):
-        self.clob_api_base = os.getenv("POLYMARKET_CLOB_API", "https://clob.polymarket.com")
         self.data_api_base = os.getenv("POLYMARKET_DATA_API", "https://data-api.polymarket.com")
-        self.mock_mode = os.getenv("MOCK_MODE", "true").lower() == "true"
-        self.client = httpx.AsyncClient(timeout=30.0)
+        self.gamma_api_base = os.getenv("POLYMARKET_GAMMA_API", "https://gamma-api.polymarket.com")
+        self.client = httpx.AsyncClient(timeout=10.0)
 
-    async def get_recent_trades(self, limit: int = 100) -> List[dict]:
+    async def get_recent_trades(self, limit: int = 1000) -> List[dict]:
         """
-        Fetch recent trades from Polymarket CLOB API.
-        In mock mode, generates synthetic data.
+        Fetch recent trades from Polymarket Data API (public, no auth required).
         """
-        if self.mock_mode:
-            return self._generate_mock_trades(limit)
-
         try:
-            response = await self.client.get(f"{self.clob_api_base}/trades", params={"limit": limit})
+            response = await self.client.get(
+                f"{self.data_api_base}/trades",
+                params={"limit": limit}
+            )
             response.raise_for_status()
-            return response.json()
+            trades = response.json()
+
+            # Transform to consistent format
+            result = []
+            for t in trades:
+                result.append({
+                    "id": t.get("transactionHash", ""),
+                    "market": t.get("conditionId", ""),
+                    "market_name": t.get("title", "Unknown"),
+                    "asset_id": t.get("asset", ""),
+                    "maker_address": t.get("proxyWallet", ""),
+                    "price": float(t.get("price", 0)),
+                    "side": t.get("side", ""),
+                    "size": float(t.get("size", 0)),
+                    "timestamp": int(t.get("timestamp", 0)) * 1000,  # Convert to ms
+                    "outcome": t.get("outcome", ""),
+                    "event_slug": t.get("eventSlug", ""),
+                })
+            return result
         except Exception as e:
             print(f"Error fetching trades: {e}")
             return []
 
-    async def get_market_activity(self, market_id: Optional[str] = None) -> List[dict]:
+    async def get_market_info(self, market_id: str) -> Optional[dict]:
         """
-        Fetch market activity from Polymarket Data API.
+        Fetch market info including resolution status from Polymarket Gamma API.
+        market_id should be the conditionId.
         """
-        if self.mock_mode:
-            return self._generate_mock_activity()
-
         try:
-            url = f"{self.data_api_base}/activity"
-            params = {"market_id": market_id} if market_id else {}
-            response = await self.client.get(url, params=params)
+            # Try to find market by conditionId
+            response = await self.client.get(
+                f"{self.gamma_api_base}/markets",
+                params={"condition_id": market_id, "limit": 1}
+            )
+            response.raise_for_status()
+            markets = response.json()
+
+            if markets and len(markets) > 0:
+                data = markets[0]
+                return {
+                    "id": market_id,
+                    "question": data.get("question", ""),
+                    "resolved": data.get("closed", False),
+                    "resolved_outcome": data.get("outcome", data.get("winner")),
+                    "end_date": data.get("endDate"),
+                }
+            return None
+        except Exception as e:
+            print(f"Error fetching market info for {market_id}: {e}")
+            return None
+
+    async def get_resolved_markets(self, limit: int = 100, offset: int = 0) -> List[dict]:
+        """
+        Fetch resolved/closed markets from Gamma API.
+        """
+        try:
+            response = await self.client.get(
+                f"{self.gamma_api_base}/markets",
+                params={"closed": "true", "limit": limit, "offset": offset}
+            )
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            print(f"Error fetching activity: {e}")
+            print(f"Error fetching resolved markets: {e}")
             return []
 
-    def _generate_mock_trades(self, count: int = 50) -> List[dict]:
+    async def get_user_activity(self, wallet_address: str, limit: int = 100) -> List[dict]:
         """
-        Generate mock trade data for development.
+        Fetch user's trade activity from Polymarket Data API.
         """
-        markets = [
-            {"id": "mkt_1", "name": "Will Bitcoin reach $100k in 2026?"},
-            {"id": "mkt_2", "name": "Will Trump win 2028 election?"},
-            {"id": "mkt_3", "name": "Will AI achieve AGI by 2030?"},
-            {"id": "mkt_4", "name": "Will Ethereum flip Bitcoin?"},
-            {"id": "mkt_5", "name": "Will SpaceX land on Mars by 2030?"},
-        ]
+        try:
+            response = await self.client.get(
+                f"{self.data_api_base}/activity",
+                params={"user": wallet_address, "limit": limit}
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            print(f"Error fetching user activity: {e}")
+            return []
 
-        wallets = [
-            f"0x{''.join(random.choices('0123456789abcdef', k=40))}"
-            for _ in range(20)
-        ]
-
-        trades = []
-        now = datetime.utcnow()
-
-        for i in range(count):
-            market = random.choice(markets)
-            wallet = random.choice(wallets)
-
-            # Create some "whale" wallets with occasional huge bets
-            is_whale = wallet in wallets[:5]
-            base_size = random.uniform(100, 2000)
-
-            if is_whale and random.random() < 0.3:  # 30% chance of large bet
-                trade_size = random.uniform(10000, 50000)
-            else:
-                trade_size = base_size
-
-            trade = {
-                "id": f"trade_{i}",
-                "market": market["id"],
-                "market_name": market["name"],
-                "asset_id": f"asset_{market['id']}",
-                "maker_address": wallet,
-                "taker_address": random.choice(wallets),
-                "price": str(round(random.uniform(0.1, 0.9), 2)),
-                "side": random.choice(["BUY", "SELL"]),
-                "size": str(trade_size),
-                "timestamp": int((now.timestamp() - random.randint(0, 86400)) * 1000),
-                "outcome": random.choice(["YES", "NO"])
-            }
-            trades.append(trade)
-
-        return sorted(trades, key=lambda x: x["timestamp"], reverse=True)
-
-    def _generate_mock_activity(self, count: int = 30) -> List[dict]:
+    async def get_historical_trades(self, before_timestamp: int = None, limit: int = 500) -> List[dict]:
         """
-        Generate mock activity data.
+        Fetch historical trades. Use cursor/before_timestamp for pagination.
         """
-        return []  # Can be expanded if needed
+        try:
+            params = {"limit": limit}
+            if before_timestamp:
+                params["before"] = before_timestamp
+
+            response = await self.client.get(
+                f"{self.data_api_base}/trades",
+                params=params
+            )
+            response.raise_for_status()
+            trades = response.json()
+
+            # Transform to consistent format
+            result = []
+            for t in trades:
+                result.append({
+                    "id": t.get("transactionHash", ""),
+                    "market": t.get("conditionId", ""),
+                    "market_name": t.get("title", "Unknown"),
+                    "asset_id": t.get("asset", ""),
+                    "maker_address": t.get("proxyWallet", ""),
+                    "price": float(t.get("price", 0)),
+                    "side": t.get("side", ""),
+                    "size": float(t.get("size", 0)),
+                    "timestamp": int(t.get("timestamp", 0)) * 1000,
+                    "outcome": t.get("outcome", ""),
+                    "event_slug": t.get("eventSlug", ""),
+                })
+            return result
+        except Exception as e:
+            print(f"Error fetching historical trades: {e}")
+            return []
 
     async def close(self):
         await self.client.aclose()

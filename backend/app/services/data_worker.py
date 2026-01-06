@@ -11,7 +11,7 @@ class DataIngestionWorker:
     def __init__(self):
         self.client = PolymarketClient()
         self.detector = InsiderDetector()
-        self.poll_interval = int(os.getenv("POLL_INTERVAL_SECONDS", "30"))
+        self.poll_interval = int(os.getenv("POLL_INTERVAL_SECONDS", "10"))
         self.is_running = False
 
     async def start(self):
@@ -42,7 +42,7 @@ class DataIngestionWorker:
         Fetch trades from API, calculate z-scores, and store in database.
         """
         async with async_session_maker() as session:
-            trades = await self.client.get_recent_trades(limit=100)
+            trades = await self.client.get_recent_trades(limit=1000)
 
             for trade_data in trades:
                 await self._process_single_trade(trade_data, session)
@@ -57,6 +57,11 @@ class DataIngestionWorker:
         try:
             wallet_address = trade_data.get("maker_address", "")
             trade_size_usd = float(trade_data.get("size", 0))
+            
+            # Filter out bot trades / small trades
+            if trade_size_usd < 50:
+                return
+
             market_id = trade_data.get("market", "")
             market_name = trade_data.get("market_name", "Unknown Market")
             timestamp = datetime.fromtimestamp(int(trade_data.get("timestamp", 0)) / 1000)
@@ -89,7 +94,8 @@ class DataIngestionWorker:
                 price=float(trade_data.get("price", 0)),
                 timestamp=timestamp,
                 is_flagged=is_flagged,
-                z_score=z_score
+                z_score=z_score,
+                is_win=trade_data.get("is_win")
             )
 
             session.add(trade)

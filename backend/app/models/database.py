@@ -23,7 +23,14 @@ class Trade(Base):
     price = Column(Float, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
     is_flagged = Column(Boolean, default=False)
+    flag_reason = Column(String, nullable=True)
     z_score = Column(Float, nullable=True)
+    
+    # Resolution fields
+    is_resolved = Column(Boolean, default=False)
+    resolved_outcome = Column(String, nullable=True)
+    is_win = Column(Boolean, nullable=True)
+    pnl_usd = Column(Float, nullable=True)
 
 
 class TraderProfile(Base):
@@ -32,13 +39,18 @@ class TraderProfile(Base):
     id = Column(Integer, primary_key=True, index=True)
     wallet_address = Column(String, unique=True, index=True, nullable=False)
     total_trades = Column(Integer, default=0)
+    resolved_trades = Column(Integer, default=0)
+    winning_trades = Column(Integer, default=0)
+    win_rate = Column(Float, default=0.0)
     avg_bet_size = Column(Float, default=0.0)
     std_bet_size = Column(Float, default=0.0)
     max_bet_size = Column(Float, default=0.0)
     total_volume = Column(Float, default=0.0)
+    total_pnl = Column(Float, default=0.0)
     insider_score = Column(Float, default=0.0)  # 0-100
     last_updated = Column(DateTime, default=datetime.utcnow)
     flagged_trades_count = Column(Integer, default=0)
+    flagged_wins_count = Column(Integer, default=0)
 
 
 async def init_db():

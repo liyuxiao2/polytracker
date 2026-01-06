@@ -3,7 +3,9 @@ export interface TraderListItem {
   insider_score: number;
   total_trades: number;
   avg_bet_size: number;
+  win_rate: number;
   flagged_trades_count: number;
+  flagged_wins_count: number;
   last_trade_time?: string;
 }
 
@@ -14,6 +16,8 @@ export interface TrendingTrade {
   z_score: number;
   timestamp: string;
   deviation_percentage: number;
+  is_win: boolean | null;
+  flag_reason?: string;
 }
 
 export interface TraderProfile {
@@ -26,6 +30,8 @@ export interface TraderProfile {
   insider_score: number;
   last_updated: string;
   flagged_trades_count: number;
+  win_rate?: number;
+  flagged_wins_count?: number;
 }
 
 export interface Trade {
@@ -39,6 +45,8 @@ export interface Trade {
   timestamp: string;
   is_flagged: boolean;
   z_score?: number;
+  is_win?: boolean | null;
+  pnl_usd?: number;
 }
 
 export interface DashboardStats {
@@ -46,4 +54,6 @@ export interface DashboardStats {
   high_signal_alerts_today: number;
   total_trades_monitored: number;
   avg_insider_score: number;
+  total_resolved_trades: number;
+  avg_win_rate: number;
 }

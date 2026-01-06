@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { X, TrendingUp, DollarSign, Activity, AlertCircle } from 'lucide-react';
+import { X, TrendingUp, DollarSign, Activity, AlertCircle, Trophy, XCircle, Clock } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { TraderProfile, Trade } from '@/lib/types';
 import { api } from '@/lib/api';
@@ -36,6 +36,31 @@ export default function TraderDetail({ address, onClose }: TraderDetailProps) {
 
     fetchData();
   }, [address]);
+
+  const getOutcomeBadge = (isWin: boolean | null | undefined) => {
+    if (isWin === true) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+          <Trophy className="h-3 w-3" />
+          Won
+        </span>
+      );
+    }
+    if (isWin === false) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-500/20 text-red-400 border border-red-500/30">
+          <XCircle className="h-3 w-3" />
+          Lost
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-600/50 text-slate-300">
+        <Clock className="h-3 w-3" />
+        Pending
+      </span>
+    );
+  };
 
   if (loading) {
     return (
@@ -159,6 +184,7 @@ export default function TraderDetail({ address, onClose }: TraderDetailProps) {
                       const { cx, cy, payload } = props;
                       return (
                         <circle
+                          key={payload.index}
                           cx={cx}
                           cy={cy}
                           r={payload.isFlagged ? 6 : 4}
@@ -209,6 +235,9 @@ export default function TraderDetail({ address, onClose }: TraderDetailProps) {
                       Z-Score
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-slate-300 uppercase">
+                      Outcome
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-300 uppercase">
                       Time
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-slate-300 uppercase">
@@ -227,6 +256,9 @@ export default function TraderDetail({ address, onClose }: TraderDetailProps) {
                       </td>
                       <td className="px-6 py-4 text-sm text-slate-300">
                         {trade.z_score?.toFixed(2) || 'N/A'}
+                      </td>
+                      <td className="px-6 py-4">
+                        {getOutcomeBadge(trade.is_win)}
                       </td>
                       <td className="px-6 py-4 text-sm text-slate-400">
                         {formatRelativeTime(trade.timestamp)}

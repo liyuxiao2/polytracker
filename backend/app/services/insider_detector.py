@@ -127,9 +127,11 @@ class InsiderDetector:
 
         # Component 2: Average Z-score of flagged trades (0-30 points)
         if flagged_trades:
-            avg_z_score = np.mean([t.z_score for t in flagged_trades if t.z_score])
-            # Normalize: z-score of 3 = 10 points, 6 = 20, 9+ = 30
-            score += min(avg_z_score / 9 * 30, 30)
+            z_scores = [t.z_score for t in flagged_trades if t.z_score is not None]
+            if z_scores:
+                avg_z_score = np.mean(z_scores)
+                # Normalize: z-score of 3 = 10 points, 6 = 20, 9+ = 30
+                score += min(avg_z_score / 9 * 30, 30)
 
         # Component 3: Recency of flagged trades (0-30 points)
         recent_trades = [t for t in all_trades if

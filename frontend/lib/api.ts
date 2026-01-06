@@ -17,9 +17,16 @@ export class PolyEdgeAPI {
     return response.json();
   }
 
-  async getTrendingTrades(minSize: number = 5000, hours: number = 24, limit: number = 100): Promise<TrendingTrade[]> {
+  async getTrendingTrades(
+    minSize: number = 5000, 
+    hours: number = 24, 
+    limit: number = 50,
+    page: number = 1,
+    sortBy: string = 'timestamp',
+    sortOrder: string = 'desc'
+  ): Promise<TrendingTrade[]> {
     const response = await fetch(
-      `${this.baseUrl}/api/trades/trending?min_size=${minSize}&hours=${hours}&limit=${limit}`
+      `${this.baseUrl}/api/trades/trending?min_size=${minSize}&hours=${hours}&limit=${limit}&page=${page}&sort_by=${sortBy}&sort_order=${sortOrder}`
     );
     if (!response.ok) throw new Error('Failed to fetch trending trades');
     return response.json();

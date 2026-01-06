@@ -21,6 +21,7 @@ class TradeResponse(TradeBase):
     id: int
     is_flagged: bool
     z_score: Optional[float] = None
+    is_win: Optional[bool] = None
 
     class Config:
         from_attributes = True
@@ -57,6 +58,8 @@ class TrendingTrade(BaseModel):
     z_score: float
     timestamp: datetime
     deviation_percentage: float
+    is_win: Optional[bool] = None
+    flag_reason: Optional[str] = None
 
 
 class DashboardStats(BaseModel):
@@ -64,6 +67,8 @@ class DashboardStats(BaseModel):
     high_signal_alerts_today: int
     total_trades_monitored: int
     avg_insider_score: float
+    total_resolved_trades: int
+    avg_win_rate: float
 
 
 class PolymarketTradeEvent(BaseModel):

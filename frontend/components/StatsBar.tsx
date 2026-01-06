@@ -1,6 +1,6 @@
 'use client';
 
-import { TrendingUp, AlertTriangle, Activity, Target } from 'lucide-react';
+import { AlertTriangle, Activity, Target, Trophy } from 'lucide-react';
 import { DashboardStats } from '@/lib/types';
 import { formatNumber } from '@/lib/utils';
 
@@ -13,27 +13,33 @@ export default function StatsBar({ stats }: StatsBarProps) {
     {
       title: 'Whales Tracked',
       value: stats.total_whales_tracked,
+      decimals: 0,
       icon: Target,
       color: 'blue',
     },
     {
-      title: 'High-Signal Alerts',
-      value: stats.high_signal_alerts_today,
-      subtitle: 'Today',
-      icon: AlertTriangle,
-      color: 'red',
-    },
-    {
-      title: 'Total Trades',
-      value: stats.total_trades_monitored,
+      title: 'Resolved Trades',
+      value: stats.total_resolved_trades,
+      decimals: 0,
+      subtitle: 'Won/Lost Known',
       icon: Activity,
       color: 'green',
     },
     {
-      title: 'Avg Insider Score',
-      value: stats.avg_insider_score.toFixed(1),
-      icon: TrendingUp,
+      title: 'Flagged Win Rate',
+      value: stats.avg_win_rate,
+      decimals: 1,
+      subtitle: 'Flagged Trades',
+      icon: Trophy,
       color: 'yellow',
+      suffix: '%',
+    },
+    {
+      title: 'Alerts Today',
+      value: stats.high_signal_alerts_today,
+      decimals: 0,
+      icon: AlertTriangle,
+      color: 'red',
     },
   ];
 
@@ -59,7 +65,7 @@ export default function StatsBar({ stats }: StatsBarProps) {
                   {stat.title}
                 </p>
                 <p className="text-3xl font-bold text-white mt-2">
-                  {formatNumber(stat.value)}
+                  {formatNumber(stat.value, stat.decimals)}{('suffix' in stat) ? stat.suffix : ''}
                 </p>
                 {stat.subtitle && (
                   <p className="text-xs text-slate-500 mt-1">{stat.subtitle}</p>

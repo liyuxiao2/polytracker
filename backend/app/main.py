@@ -5,6 +5,7 @@ import asyncio
 from app.api.routes import router
 from app.models.database import init_db
 from app.services.data_worker import get_worker
+from app.services.resolution_worker import get_resolution_worker
 
 
 @asynccontextmanager
@@ -16,17 +17,24 @@ async def lifespan(app: FastAPI):
     print("[App] Initializing database...")
     await init_db()
 
-    print("[App] Starting background worker...")
+    print("[App] Starting background workers...")
     worker = await get_worker()
     worker_task = asyncio.create_task(worker.start())
+
+    resolution_worker = await get_resolution_worker()
+    resolution_task = asyncio.create_task(resolution_worker.start())
 
     yield
 
     # Shutdown
-    print("[App] Shutting down background worker...")
+    print("[App] Shutting down background workers...")
     worker = await get_worker()
     await worker.stop()
     worker_task.cancel()
+
+    resolution_worker = await get_resolution_worker()
+    await resolution_worker.stop()
+    resolution_task.cancel()
 
 
 app = FastAPI(
@@ -39,7 +47,7 @@ app = FastAPI(
 # CORS middleware for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
