@@ -1,9 +1,8 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc, and_
+from sqlalchemy import select, func, desc, asc, and_
 from datetime import datetime, timedelta
-from typing import List
-
+from typing import List, Optional
 from app.models.database import get_session, Trade, TraderProfile
 from app.schemas.trader import (
     TraderProfileResponse,
@@ -64,7 +63,10 @@ async def get_flagged_traders(
 async def get_trending_trades(
     min_size: float = Query(5000, ge=0),
     hours: int = Query(24, ge=1, le=168),
-    limit: int = Query(100, le=500),
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, le=500),
+    sort_by: str = Query("timestamp", regex="^(timestamp|size|z_score|win_loss|deviation)$"),
+    sort_order: str = Query("desc", regex="^(asc|desc)$"),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -72,36 +74,61 @@ async def get_trending_trades(
     """
     cutoff_time = datetime.utcnow() - timedelta(hours=hours)
 
-    result = await session.execute(
-        select(Trade)
-        .where(
-            and_(
-                Trade.timestamp >= cutoff_time,
-                (
-                    (Trade.is_flagged == True) |
-                    (Trade.trade_size_usd >= min_size) |
-                    ((Trade.is_win == True) & (Trade.trade_size_usd >= 10000))  # Large winning bets
-                )
+    # Base query: Join with TraderProfile to calculate deviation during sort/select
+    query = select(Trade, TraderProfile).outerjoin(
+        TraderProfile, Trade.wallet_address == TraderProfile.wallet_address
+    ).where(
+        and_(
+            Trade.timestamp >= cutoff_time,
+            (
+                (Trade.is_flagged == True) |
+                (Trade.trade_size_usd >= min_size) |
+                ((Trade.is_win == True) & (Trade.trade_size_usd >= 10000))
             )
         )
-        .order_by(desc(Trade.timestamp))
-        .limit(limit)
     )
-    trades = result.scalars().all()
 
-    # Get trader profiles to calculate deviation percentage
-    trending = []
-    for trade in trades:
-        profile_result = await session.execute(
-            select(TraderProfile).where(TraderProfile.wallet_address == trade.wallet_address)
+    # Sorting
+    if sort_by == "size":
+        sort_col = Trade.trade_size_usd
+    elif sort_by == "z_score":
+        sort_col = Trade.z_score
+    elif sort_by == "win_loss":
+        sort_col = Trade.is_win
+    elif sort_by == "deviation":
+        # Sort by deviation percentage: (trade_size - avg_bet) / avg_bet
+        # Handle division by zero/null using case
+        sort_col = func.case(
+            (TraderProfile.avg_bet_size > 0, (Trade.trade_size_usd - TraderProfile.avg_bet_size) / TraderProfile.avg_bet_size),
+            else_=0
         )
-        profile = profile_result.scalar_one_or_none()
+    else: # timestamp
+        sort_col = Trade.timestamp
 
-        if profile and profile.avg_bet_size > 0:
-            deviation_pct = ((trade.trade_size_usd - profile.avg_bet_size) / profile.avg_bet_size) * 100
+    if sort_order == "desc":
+        if sort_by == "win_loss":
+             query = query.order_by(desc(Trade.is_win).nullslast())
         else:
-            deviation_pct = 0.0
+             query = query.order_by(desc(sort_col))
+    else:
+        if sort_by == "win_loss":
+             query = query.order_by(asc(Trade.is_win).nullslast())
+        else:
+            query = query.order_by(asc(sort_col))
 
+    # Apply pagination
+    offset = (page - 1) * limit
+    query = query.offset(offset).limit(limit)
+
+    result = await session.execute(query)
+    rows = result.all()
+
+    trending = []
+    for trade, profile in rows:
+        deviation_pct = 0.0
+        if profile and profile.avg_bet_size > 0:
+             deviation_pct = ((trade.trade_size_usd - profile.avg_bet_size) / profile.avg_bet_size) * 100
+        
         trending.append(TrendingTrade(
             wallet_address=trade.wallet_address,
             market_name=trade.market_name,
@@ -132,13 +159,13 @@ async def get_trader_profile(
     if not profile:
         # If no profile exists, update it
         await detector.update_trader_profile(address, session)
-        await session.commit()
         result = await session.execute(
             select(TraderProfile).where(TraderProfile.wallet_address == address)
         )
         profile = result.scalar_one_or_none()
 
     if not profile:
+        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Trader not found")
 
     return TraderProfileResponse.model_validate(profile)
@@ -178,15 +205,13 @@ async def get_dashboard_stats(
     )
     total_whales = whales_result.scalar() or 0
 
-    # High-signal alerts today (flagged trades)
+    # High-signal alerts today
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     alerts_result = await session.execute(
         select(func.count(Trade.id))
         .where(
-            and_(
-                Trade.is_flagged == True,
-                Trade.timestamp >= today_start
-            )
+            (Trade.is_flagged == True) &
+            (Trade.timestamp >= today_start)
         )
     )
     alerts_today = alerts_result.scalar() or 0
@@ -197,25 +222,34 @@ async def get_dashboard_stats(
     )
     total_trades = total_trades_result.scalar() or 0
 
-    # Total resolved trades
-    resolved_result = await session.execute(
-        select(func.count(Trade.id))
-        .where(Trade.is_resolved == True)
-    )
-    total_resolved = resolved_result.scalar() or 0
-
     # Average insider score
     avg_score_result = await session.execute(
         select(func.avg(TraderProfile.insider_score))
     )
     avg_score = avg_score_result.scalar() or 0.0
 
-    # Average win rate (only for traders with resolved trades)
-    avg_win_rate_result = await session.execute(
-        select(func.avg(TraderProfile.win_rate))
-        .where(TraderProfile.resolved_trades >= 5)
+    # Resolved trades (where is_win is not null) - these are trades we can verify won/lost
+    resolved_result = await session.execute(
+        select(func.count(Trade.id))
+        .where(Trade.is_win.isnot(None))
     )
-    avg_win_rate = avg_win_rate_result.scalar() or 0.0
+    total_resolved = resolved_result.scalar() or 0
+
+    # Average win rate from resolved flagged trades
+    flagged_resolved_result = await session.execute(
+        select(
+            func.count(Trade.id).filter(Trade.is_win == True),
+            func.count(Trade.id)
+        )
+        .where(
+            (Trade.is_flagged == True) &
+            (Trade.is_win.isnot(None))
+        )
+    )
+    row = flagged_resolved_result.one()
+    wins = row[0] or 0
+    total_flagged_resolved = row[1] or 0
+    avg_win_rate = (wins / total_flagged_resolved * 100) if total_flagged_resolved > 0 else 0.0
 
     return DashboardStats(
         total_whales_tracked=total_whales,

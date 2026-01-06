@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Sidebar from '@/components/Sidebar';
 import StatsBar from '@/components/StatsBar';
 import TradersTable from '@/components/TradersTable';
@@ -17,6 +17,8 @@ export default function Dashboard() {
     high_signal_alerts_today: 0,
     total_trades_monitored: 0,
     avg_insider_score: 0,
+    total_resolved_trades: 0,
+    avg_win_rate: 0
   });
   const [traders, setTraders] = useState<TraderListItem[]>([]);
   const [trendingTrades, setTrendingTrades] = useState<TrendingTrade[]>([]);
@@ -24,12 +26,17 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
-  const fetchData = async () => {
+  // Pagination and sorting state for trades
+  const [tradesPage, setTradesPage] = useState(1);
+  const [tradesSortBy, setTradesSortBy] = useState('timestamp');
+  const [tradesSortOrder, setTradesSortOrder] = useState('desc');
+
+  const fetchData = useCallback(async () => {
     try {
       const [statsData, tradersData, tradesData] = await Promise.all([
         api.getDashboardStats(),
         api.getTraders(0, 100),
-        api.getTrendingTrades(5000, 24, 100),
+        api.getTrendingTrades(5000, 24, 50, tradesPage, tradesSortBy, tradesSortOrder),
       ]);
 
       setStats(statsData);
@@ -40,11 +47,11 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [tradesPage, tradesSortBy, tradesSortOrder]);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   useEffect(() => {
     if (!autoRefresh) return;
@@ -54,7 +61,7 @@ export default function Dashboard() {
     }, 30000); // Refresh every 30 seconds
 
     return () => clearInterval(interval);
-  }, [autoRefresh]);
+  }, [autoRefresh, fetchData]);
 
   const handleRefresh = () => {
     setLoading(true);
@@ -120,7 +127,15 @@ export default function Dashboard() {
           {/* Content */}
           {activeView === 'live-feed' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <LiveFeed trades={trendingTrades} />
+              <LiveFeed 
+                trades={trendingTrades} 
+                page={tradesPage}
+                setPage={setTradesPage}
+                sortBy={tradesSortBy}
+                setSortBy={setTradesSortBy}
+                sortOrder={tradesSortOrder}
+                setSortOrder={setTradesSortOrder}
+              />
               <div>
                 <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
                   <h2 className="text-lg font-semibold text-white mb-4">

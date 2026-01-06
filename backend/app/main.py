@@ -2,43 +2,40 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncio
-
 from app.api.routes import router
 from app.models.database import init_db
 from app.services.data_worker import get_worker
-from app.services.resolution_checker import get_resolution_checker
-from app.config import get_settings
+from app.services.resolution_worker import get_resolution_worker
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup and shutdown events for the FastAPI application."""
+    """
+    Startup and shutdown events for the FastAPI application.
+    """
     # Startup
     print("[App] Initializing database...")
     await init_db()
 
-    print("[App] Starting background worker...")
+    print("[App] Starting background workers...")
     worker = await get_worker()
     worker_task = asyncio.create_task(worker.start())
 
-    print("[App] Starting resolution checker...")
-    resolution_checker = await get_resolution_checker()
-    resolution_task = asyncio.create_task(resolution_checker.start())
+    resolution_worker = await get_resolution_worker()
+    resolution_task = asyncio.create_task(resolution_worker.start())
 
     yield
 
     # Shutdown
-    print("[App] Shutting down services...")
+    print("[App] Shutting down background workers...")
     worker = await get_worker()
     await worker.stop()
     worker_task.cancel()
 
-    resolution_checker = await get_resolution_checker()
-    await resolution_checker.stop()
+    resolution_worker = await get_resolution_worker()
+    await resolution_worker.stop()
     resolution_task.cancel()
 
-
-settings = get_settings()
 
 app = FastAPI(
     title="PolyEdge API",
@@ -50,7 +47,7 @@ app = FastAPI(
 # CORS middleware for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -76,11 +73,15 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
+    import os
+
+    host = os.getenv("API_HOST", "0.0.0.0")
+    port = int(os.getenv("API_PORT", "8000"))
 
     uvicorn.run(
         "app.main:app",
-        host=settings.api_host,
-        port=settings.api_port,
+        host=host,
+        port=port,
         reload=True,
         log_level="info"
     )
