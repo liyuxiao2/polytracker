@@ -11,7 +11,7 @@ interface TradersTableProps {
   onTraderClick: (address: string) => void;
 }
 
-type SortField = 'insider_score' | 'total_trades' | 'avg_bet_size' | 'flagged_trades_count';
+type SortField = 'insider_score' | 'total_trades' | 'avg_bet_size' | 'flagged_trades_count' | 'win_rate' | 'total_pnl';
 type SortDirection = 'asc' | 'desc';
 
 export default function TradersTable({ traders, onTraderClick }: TradersTableProps) {
@@ -77,6 +77,24 @@ export default function TradersTable({ traders, onTraderClick }: TradersTablePro
                   <ArrowUpDown className="h-3 w-3" />
                 </button>
               </th>
+              <th className="px-6 py-4 text-left">
+                <button
+                  onClick={() => handleSort('win_rate')}
+                  className="flex items-center gap-2 text-xs font-semibold text-slate-300 uppercase tracking-wider hover:text-white"
+                >
+                  Win Rate
+                  <ArrowUpDown className="h-3 w-3" />
+                </button>
+              </th>
+              <th className="px-6 py-4 text-left">
+                <button
+                  onClick={() => handleSort('total_pnl')}
+                  className="flex items-center gap-2 text-xs font-semibold text-slate-300 uppercase tracking-wider hover:text-white"
+                >
+                  Total PnL
+                  <ArrowUpDown className="h-3 w-3" />
+                </button>
+              </th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">
                 Last Trade
               </th>
@@ -116,6 +134,23 @@ export default function TradersTable({ traders, onTraderClick }: TradersTablePro
                 <td className="px-6 py-4">
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-500/10 text-red-400">
                     {trader.flagged_trades_count}
+                  </span>
+                </td>
+                <td className="px-6 py-4">
+                  <span className={cn(
+                    "text-sm font-medium",
+                    trader.win_rate >= 60 ? "text-emerald-400" :
+                    trader.win_rate >= 40 ? "text-slate-300" : "text-red-400"
+                  )}>
+                    {trader.win_rate.toFixed(1)}%
+                  </span>
+                </td>
+                <td className="px-6 py-4">
+                  <span className={cn(
+                    "text-sm font-semibold",
+                    trader.total_pnl >= 0 ? "text-emerald-400" : "text-red-400"
+                  )}>
+                    {trader.total_pnl >= 0 ? '+' : ''}{formatCurrency(trader.total_pnl)}
                   </span>
                 </td>
                 <td className="px-6 py-4 text-sm text-slate-400">

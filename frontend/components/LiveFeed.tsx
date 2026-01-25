@@ -2,7 +2,7 @@
 
 import { TrendingTrade } from '@/lib/types';
 import { formatCurrency, shortenAddress, formatRelativeTime } from '@/lib/utils';
-import { TrendingUp, TrendingDown, Trophy, XCircle, Clock, ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-react';
+import { TrendingUp, TrendingDown, Trophy, XCircle, Clock, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 
 interface LiveFeedProps {
   trades: TrendingTrade[];
@@ -118,6 +118,27 @@ export default function LiveFeed({
                   <code className="text-sm text-blue-400 font-mono">
                     {shortenAddress(trade.wallet_address)}
                   </code>
+                  {/* BUY/SELL Badge */}
+                  {trade.side && (
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
+                      trade.side === 'BUY'
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                        : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
+                    }`}>
+                      {trade.side === 'BUY' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                      {trade.side}
+                    </span>
+                  )}
+                  {/* YES/NO Outcome Badge */}
+                  {trade.outcome && (
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                      trade.outcome === 'YES'
+                        ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                        : 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
+                    }`}>
+                      {trade.outcome}
+                    </span>
+                  )}
                   {getWinLossBadge(trade.is_win)}
                   {trade.deviation_percentage > 0 ? (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-500/10 text-red-400">
@@ -136,13 +157,21 @@ export default function LiveFeed({
               </div>
               <div className="text-right">
                 <p className={`text-lg font-bold ${
-                  trade.is_win === true ? 'text-emerald-400' : 
+                  trade.is_win === true ? 'text-emerald-400' :
                   trade.is_win === false ? 'text-red-400' : 'text-white'
                 }`}>
                   {formatCurrency(trade.trade_size_usd)}
                 </p>
+                {trade.pnl_usd !== null && trade.pnl_usd !== undefined && (
+                  <p className={`text-sm font-medium ${
+                    trade.pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400'
+                  }`}>
+                    {trade.pnl_usd >= 0 ? '+' : ''}{formatCurrency(trade.pnl_usd)}
+                  </p>
+                )}
                 <p className="text-xs text-slate-400 mt-1">
                   Z-Score: {trade.z_score.toFixed(2)}
+                  {trade.price && ` @ ${(trade.price * 100).toFixed(0)}%`}
                 </p>
               </div>
             </div>

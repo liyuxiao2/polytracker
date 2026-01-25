@@ -51,6 +51,7 @@ async def get_flagged_traders(
             total_trades=profile.total_trades,
             avg_bet_size=profile.avg_bet_size,
             win_rate=profile.win_rate,
+            total_pnl=profile.total_pnl,
             flagged_trades_count=profile.flagged_trades_count,
             flagged_wins_count=profile.flagged_wins_count,
             last_trade_time=last_trade
@@ -128,7 +129,7 @@ async def get_trending_trades(
         deviation_pct = 0.0
         if profile and profile.avg_bet_size > 0:
              deviation_pct = ((trade.trade_size_usd - profile.avg_bet_size) / profile.avg_bet_size) * 100
-        
+
         trending.append(TrendingTrade(
             wallet_address=trade.wallet_address,
             market_name=trade.market_name,
@@ -137,7 +138,15 @@ async def get_trending_trades(
             timestamp=trade.timestamp,
             deviation_percentage=deviation_pct,
             is_win=trade.is_win,
-            flag_reason=trade.flag_reason
+            flag_reason=trade.flag_reason,
+            # Trade details
+            outcome=trade.outcome,
+            side=trade.side,
+            price=trade.price,
+            pnl_usd=trade.pnl_usd,
+            # Timing analysis
+            hours_before_resolution=trade.hours_before_resolution,
+            trade_hour_utc=trade.trade_hour_utc
         ))
 
     return trending
@@ -251,11 +260,31 @@ async def get_dashboard_stats(
     total_flagged_resolved = row[1] or 0
     avg_win_rate = (wins / total_flagged_resolved * 100) if total_flagged_resolved > 0 else 0.0
 
+    # NEW: Total volume in last 24 hours
+    cutoff_24h = datetime.utcnow() - timedelta(hours=24)
+    volume_result = await session.execute(
+        select(func.sum(Trade.trade_size_usd))
+        .where(Trade.timestamp >= cutoff_24h)
+    )
+    total_volume_24h = volume_result.scalar() or 0.0
+
+    # NEW: Total PnL from flagged trades
+    pnl_result = await session.execute(
+        select(func.sum(Trade.pnl_usd))
+        .where(
+            (Trade.is_flagged == True) &
+            (Trade.pnl_usd.isnot(None))
+        )
+    )
+    total_pnl_flagged = pnl_result.scalar() or 0.0
+
     return DashboardStats(
         total_whales_tracked=total_whales,
         high_signal_alerts_today=alerts_today,
         total_trades_monitored=total_trades,
         avg_insider_score=float(avg_score),
         total_resolved_trades=total_resolved,
-        avg_win_rate=float(avg_win_rate)
+        avg_win_rate=float(avg_win_rate),
+        total_volume_24h=float(total_volume_24h),
+        total_pnl_flagged=float(total_pnl_flagged)
     )

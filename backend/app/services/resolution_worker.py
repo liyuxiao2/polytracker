@@ -78,14 +78,25 @@ class TradeResolutionWorker:
                 if market_info and market_info.get("resolved"):
                     resolved_outcome = market_info.get("resolved_outcome")
 
+                    # Only process if we have an actual outcome
+                    if not resolved_outcome:
+                        continue
+
+                    # Get resolution time for timing analysis
+                    resolution_time = datetime.utcnow()  # Approximation - when we detected resolution
+
                     for trade in trades:
                         is_win = self._determine_win(trade, resolved_outcome)
                         pnl = self._calculate_pnl(trade, is_win)
+
+                        # Calculate hours before resolution for insider timing analysis
+                        hours_before = (resolution_time - trade.timestamp).total_seconds() / 3600
 
                         trade.is_resolved = True
                         trade.resolved_outcome = resolved_outcome
                         trade.is_win = is_win
                         trade.pnl_usd = pnl
+                        trade.hours_before_resolution = hours_before
 
                         resolved_count += 1
 
@@ -123,16 +134,20 @@ class TradeResolutionWorker:
     def _calculate_pnl(self, trade: Trade, is_win: bool) -> float:
         """
         Calculate profit/loss for a trade.
-        - If won: profit = size * (1 - price)  [bought at price, resolved at $1]
-        - If lost: loss = -size * price  [lost the amount paid]
+        - If won: profit = size * (1 - price) / price  [bought at price, resolved at $1]
+        - If lost: loss = -size  [lost the entire stake]
         """
-        if trade.price is None:
+        if trade.price is None or trade.price <= 0:
             return 0.0
 
         if is_win:
-            return trade.trade_size_usd * (1 - trade.price)
+            # Bought at price p, paid trade_size_usd total, got (trade_size_usd/p) shares
+            # Each share pays $1, so payout = trade_size_usd/p
+            # Profit = payout - cost = trade_size_usd/p - trade_size_usd = trade_size_usd * (1-p)/p
+            return trade.trade_size_usd * (1 - trade.price) / trade.price
         else:
-            return -trade.trade_size_usd * trade.price
+            # Lost entire stake
+            return -trade.trade_size_usd
 
     async def _update_trader_stats(
         self,
