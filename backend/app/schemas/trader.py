@@ -6,6 +6,7 @@ from typing import Optional
 class TradeBase(BaseModel):
     wallet_address: str
     market_id: str
+    market_slug: Optional[str] = None
     market_name: str
     trade_size_usd: float
     outcome: Optional[str] = None  # YES or NO
@@ -137,3 +138,25 @@ class PolymarketActivityEvent(BaseModel):
     amount: float
     price: float
     timestamp: int
+
+
+class MarketWatchItem(BaseModel):
+    """Schema for market watch list item"""
+    market_id: str
+    question: str
+    category: Optional[str] = None
+    suspicious_trades_count: int = 0
+    total_trades_count: int = 0
+    total_volume: float = 0.0
+    unique_traders_count: int = 0
+    current_yes_price: Optional[float] = None
+    current_no_price: Optional[float] = None
+    price_change_24h: Optional[float] = None
+    volatility_score: float = 0.0
+    suspicion_score: float = 0.0
+    is_resolved: bool = False
+    end_date: Optional[datetime] = None
+    metrics_updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True

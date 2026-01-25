@@ -6,6 +6,7 @@ from app.api.routes import router
 from app.models.database import init_db
 from app.services.data_worker import get_worker
 from app.services.resolution_worker import get_resolution_worker
+from app.services.market_watch_worker import get_market_watch_worker
 
 
 @asynccontextmanager
@@ -24,6 +25,9 @@ async def lifespan(app: FastAPI):
     resolution_worker = await get_resolution_worker()
     resolution_task = asyncio.create_task(resolution_worker.start())
 
+    market_watch_worker = await get_market_watch_worker()
+    market_watch_task = asyncio.create_task(market_watch_worker.start())
+
     yield
 
     # Shutdown
@@ -35,6 +39,10 @@ async def lifespan(app: FastAPI):
     resolution_worker = await get_resolution_worker()
     await resolution_worker.stop()
     resolution_task.cancel()
+
+    market_watch_worker = await get_market_watch_worker()
+    await market_watch_worker.stop()
+    market_watch_task.cancel()
 
 
 app = FastAPI(

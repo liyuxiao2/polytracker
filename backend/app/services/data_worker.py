@@ -6,7 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.database import Trade, async_session_maker
 from app.services.polymarket_client import PolymarketClient
 from app.services.insider_detector import InsiderDetector
+from typing import List, Dict, Any
 import os
+import asyncio
 
 
 class DataIngestionWorker:
@@ -92,6 +94,7 @@ class DataIngestionWorker:
 
             # Parse all trade fields
             market_id = trade_data.get("market", "")
+            market_slug = trade_data.get("event_slug", "")
             market_name = trade_data.get("market_name", "Unknown Market")
             timestamp = datetime.fromtimestamp(int(trade_data.get("timestamp", 0)) / 1000)
 
@@ -128,6 +131,7 @@ class DataIngestionWorker:
             trade = Trade(
                 wallet_address=wallet_address,
                 market_id=market_id,
+                market_slug=market_slug,
                 market_name=market_name,
                 trade_size_usd=trade_size_usd,
                 outcome=outcome,
@@ -147,15 +151,90 @@ class DataIngestionWorker:
 
             session.add(trade)
 
-            # Update trader profile if this is a flagged trade
-            if is_flagged:
-                await self.detector.update_trader_profile(wallet_address, session)
+            # Update trader profile if this is a flagged trade or occasionally
+            if is_flagged or new_trades % 10 == 0:
+                profile = await self.detector.update_trader_profile(wallet_address, session)
+                
+                # Check for backfill if profile exists and has few trades (indicating new discovery)
+                if profile and profile.total_trades < 50:
+                    # Trigger background backfill
+                    asyncio.create_task(self._backfill_trader_history(wallet_address))
 
             return trade
 
         except Exception as e:
             print(f"[Worker] Error processing trade: {e}")
             return None
+
+    async def _backfill_trader_history(self, wallet_address: str):
+        """
+        Fetch historical trades for a wallet to populate profile stats immediately.
+        """
+        print(f"[Worker] Backfilling history for {wallet_address}...")
+        try:
+            # Polymarket API returns recent activity
+            activity = await self.client.get_user_activity(wallet_address, limit=500)
+            
+            if not activity:
+                return
+
+            async with async_session_maker() as session:
+                count = 0
+                for item in activity:
+                    # Parse activity item to Trade format
+                    txn_hash = item.get("transactionHash")
+                    if not txn_hash:
+                        continue
+                        
+                    # Skip if exists
+                    existing = await session.execute(
+                        select(Trade).where(Trade.transaction_hash == txn_hash)
+                    )
+                    if existing.scalar_one_or_none():
+                        continue
+                        
+                    # Extract fields
+                    market_id = item.get("conditionId") or "" # Activity might not have conditionId sometimes?
+                    # Check if type is trade
+                    if item.get("type", "").upper() not in ("TRADE", "ERC1155_TRANSFER", "CTF_TRADE"):
+                        continue
+                        
+                    # Attempt to reconstruct trade
+                    price = float(item.get("price", 0))
+                    size = float(item.get("usdcSize", 0))
+                    
+                    if size < self.min_trade_size:
+                        continue
+                        
+                    timestamp = datetime.fromtimestamp(int(item.get("timestamp", 0)))
+                    
+                    trade = Trade(
+                        wallet_address=wallet_address,
+                        market_id=market_id,
+                        market_name=item.get("title") or "Backfilled Trade",
+                        market_slug=item.get("eventSlug"),
+                        trade_size_usd=size,
+                        outcome=item.get("outcome"),
+                        price=price,
+                        timestamp=timestamp,
+                        is_flagged=False,
+                        side=item.get("side", "").upper(),
+                        transaction_hash=txn_hash,
+                        trade_hour_utc=timestamp.hour
+                    )
+                    
+                    # We might not have resolution info yet, resolution worker will pick it up
+                    session.add(trade)
+                    count += 1
+                
+                await session.commit()
+                if count > 0:
+                    print(f"[Worker] Backfilled {count} trades for {wallet_address}")
+                    # Update profile again with full history
+                    await self.detector.update_trader_profile(wallet_address, session)
+                    
+        except Exception as e:
+            print(f"[Worker] Error backfilling {wallet_address}: {e}")
 
 
 # Global worker instance

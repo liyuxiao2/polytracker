@@ -13,6 +13,7 @@ export interface TraderListItem {
 export interface TrendingTrade {
   wallet_address: string;
   market_name: string;
+  market_slug?: string;
   trade_size_usd: number;
   z_score: number;
   timestamp: string;
@@ -20,8 +21,8 @@ export interface TrendingTrade {
   is_win: boolean | null;
   flag_reason?: string;
   // Trade direction and outcome
-  outcome?: string;  // YES or NO
-  side?: string;  // BUY or SELL
+  outcome?: string; // YES or NO
+  side?: string; // BUY or SELL
   price?: number;
   pnl_usd?: number;
 }
@@ -45,6 +46,8 @@ export interface TraderProfile {
   total_yes_bets: number;
   total_no_bets: number;
   outcome_bias: number;
+  roi?: number;
+  profit_factor?: number;
   // Buy/Sell tracking
   total_buys: number;
   total_sells: number;
@@ -54,6 +57,7 @@ export interface Trade {
   id: number;
   wallet_address: string;
   market_id: string;
+  market_slug?: string;
   market_name: string;
   trade_size_usd: number;
   outcome?: string;
@@ -80,4 +84,22 @@ export interface DashboardStats {
   // Volume and PnL stats
   total_volume_24h: number;
   total_pnl_flagged: number;
+}
+
+export interface MarketWatchItem {
+  market_id: string;
+  question: string;
+  category?: string;
+  suspicious_trades_count: number;
+  total_trades_count: number;
+  total_volume: number;
+  unique_traders_count: number;
+  current_yes_price?: number;
+  current_no_price?: number;
+  price_change_24h?: number;
+  volatility_score: number;
+  suspicion_score: number;
+  is_resolved: boolean;
+  end_date?: string;
+  metrics_updated_at?: string;
 }

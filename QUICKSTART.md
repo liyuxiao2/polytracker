@@ -2,7 +2,21 @@
 
 Get PolyEdge running in 5 minutes!
 
-## Step 1: Backend Setup
+## Quick Start (Single Command)
+
+After initial setup, run both servers at once:
+
+```bash
+./dev.sh
+```
+
+This starts both backend (port 8000) and frontend (port 3000) together. Press Ctrl+C to stop both.
+
+**Note**: For first-time setup or if you prefer running them separately, see the manual setup steps below.
+
+## First Time Setup (Manual Method)
+
+### Step 1: Backend Setup
 
 Open a terminal and run:
 
@@ -24,7 +38,7 @@ INFO:     Uvicorn running on http://0.0.0.0:8000
 
 Keep this terminal open!
 
-## Step 2: Frontend Setup
+### Step 2: Frontend Setup
 
 Open a **new terminal** and run:
 
@@ -40,7 +54,7 @@ You should see:
   - Local:        http://localhost:3000
 ```
 
-## Step 3: Open Dashboard
+### Step 3: Open Dashboard
 
 Visit: **http://localhost:3000**
 
@@ -59,6 +73,17 @@ In **Mock Mode** (enabled by default), the backend:
 4. Calculates Z-scores and flags anomalous trades
 5. Updates insider confidence scores in real-time
 
+## Database Migration (Required for Market Watch)
+
+If you're using the new Market Watch feature, run this migration first:
+
+```bash
+cd backend
+python run_migration.py
+```
+
+This adds the necessary fields for market categorization, metrics, and suspicious activity tracking.
+
 ## Quick Tour
 
 ### Live Feed View
@@ -70,6 +95,13 @@ In **Mock Mode** (enabled by default), the backend:
 - Traders sorted by insider confidence score
 - Score ranges from 0-100 (higher = more suspicious)
 - Sortable by trades, bet size, or flagged count
+
+### Market Watch View (NEW!)
+- Browse markets by category (NBA, Politics, Crypto, etc.)
+- See suspicion scores based on flagged trades and timing
+- Track volatility and price movements
+- Sort by suspicious activity, volatility, volume, or flagged trades
+- Filter by specific categories to focus on markets you care about
 
 ### Trader Detail Modal
 - Click any wallet address
@@ -101,6 +133,8 @@ Test the API directly:
 - **All Traders**: http://localhost:8000/api/traders
 - **Trending Trades**: http://localhost:8000/api/trades/trending
 - **Dashboard Stats**: http://localhost:8000/api/stats
+- **Market Watch**: http://localhost:8000/api/markets/watch?sort_by=suspicion_score
+- **Markets by Category**: http://localhost:8000/api/markets/watch?category=NBA
 
 ## Production Mode
 

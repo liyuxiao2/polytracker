@@ -115,6 +115,31 @@ class PolymarketClient:
             print(f"Error fetching market info from Gamma API for {market_id}: {e}")
             return None
 
+    async def get_markets_list(self, limit: int = 100, offset: int = 0, closed: bool = False) -> List[dict]:
+        """
+        Fetch a list of markets from Gamma API.
+        Args:
+            limit: Number of markets to fetch
+            offset: Pagination offset
+            closed: If True, fetch only closed markets; if False, fetch only active markets
+        """
+        try:
+            params = {"limit": limit, "offset": offset}
+            if closed:
+                params["closed"] = "true"
+            else:
+                params["active"] = "true"
+
+            response = await self.client.get(
+                f"{self.gamma_api_base}/markets",
+                params=params
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            print(f"Error fetching markets list: {e}")
+            return []
+
     async def get_resolved_markets(self, limit: int = 100, offset: int = 0) -> List[dict]:
         """
         Fetch resolved/closed markets from Gamma API.

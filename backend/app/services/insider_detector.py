@@ -12,23 +12,24 @@ class InsiderDetector:
     Advanced insider trading detection system.
 
     Detection signals implemented:
-    1. Z-score anomaly (bet size vs wallet history)
-    2. High conviction bets (low probability outcomes that win)
+    1. Z-score anomaly (bet size vs wallet history, threshold: 4.5σ)
+    2. High conviction bets (low probability outcomes that win, < 10% odds)
     3. Win rate on flagged/anomalous trades
-    4. Market concentration (only trading 1-2 markets)
-    5. Wallet age (new wallets making large bets)
+    4. Market concentration (only trading 1-2 markets, HHI > 0.7)
+    5. Wallet age (new wallets making large bets > $10k)
     6. Timing before resolution (bets placed close to outcome)
-    7. Off-hours trading (2-6 AM UTC activity)
-    8. Longshot win rate (winning at < 20% odds)
-    9. Large bet win rate (winning on outsized positions)
-    10. Coordinated trading (multiple wallets, same market, tight window)
+    7. Off-hours trading (> 50% of trades during 2-6 AM UTC)
+    8. Longshot win rate (winning at < 10% odds)
+    9. Large bet win rate (winning on 4x+ average positions)
+    9. Large bet win rate (winning on 4x+ average positions)
+    10. ROI and Profit Factor (Consistent profitability)
     """
 
     # Off-hours defined as 2-6 AM UTC (low liquidity, less scrutiny)
     OFF_HOURS_START = 2
     OFF_HOURS_END = 6
 
-    def __init__(self, z_score_threshold: float = 3.0):
+    def __init__(self, z_score_threshold: float = 4.5):
         self.z_score_threshold = float(os.getenv("Z_SCORE_THRESHOLD", z_score_threshold))
 
     async def calculate_z_score(
@@ -87,12 +88,12 @@ class InsiderDetector:
         if not trade.is_win:
             return False, None
 
-        # Check 1: Large winning bet (> $10k profit)
-        if trade.pnl_usd and trade.pnl_usd > 10000:
+        # Check 1: Large winning bet (> $25k profit)
+        if trade.pnl_usd and trade.pnl_usd > 25000:
             reasons.append(f"Large winning bet: ${trade.pnl_usd:,.0f} profit")
 
         # Check 2: High conviction bet (bought at very low price, won)
-        if trade.price and trade.price < 0.2:
+        if trade.price and trade.price < 0.1:
             reasons.append(f"High conviction: bought at {trade.price:.0%} odds")
 
         # Check 3: Large bet relative to wallet's average
@@ -103,7 +104,7 @@ class InsiderDetector:
 
         if profile and profile.avg_bet_size > 0:
             deviation = (trade.trade_size_usd - profile.avg_bet_size) / profile.avg_bet_size
-            if deviation > 2.0:  # More than 2x their average
+            if deviation > 4.0:  # More than 4x their average
                 reasons.append(f"Bet {deviation:.1f}x larger than average")
 
         # Check 4: Check wallet's win rate on flagged trades
@@ -184,18 +185,18 @@ class InsiderDetector:
         prices = [t.price for t in trades if t.price is not None and t.price > 0]
         signals["avg_entry_price"] = float(np.mean(prices)) if prices else None
 
-        # 5. Longshot win rate (bets at < 20% odds)
-        longshot_trades = [t for t in trades if t.price and t.price < 0.2 and t.is_win is not None]
+        # 5. Longshot win rate (bets at < 10% odds)
+        longshot_trades = [t for t in trades if t.price and t.price < 0.1 and t.is_win is not None]
         if longshot_trades:
             longshot_wins = sum(1 for t in longshot_trades if t.is_win)
             signals["longshot_win_rate"] = longshot_wins / len(longshot_trades)
         else:
             signals["longshot_win_rate"] = 0.0
 
-        # 6. Large bet win rate (bets > 2x average)
+        # 6. Large bet win rate (bets > 4x average)
         trade_sizes = [t.trade_size_usd for t in trades]
         avg_size = np.mean(trade_sizes) if trade_sizes else 0
-        large_trades = [t for t in trades if t.trade_size_usd > avg_size * 2 and t.is_win is not None]
+        large_trades = [t for t in trades if t.trade_size_usd > avg_size * 4 and t.is_win is not None]
         if large_trades:
             large_wins = sum(1 for t in large_trades if t.is_win)
             signals["large_bet_win_rate"] = large_wins / len(large_trades)
@@ -216,7 +217,7 @@ class InsiderDetector:
         wallet_age_days: int,
         trade_size_usd: float,
         threshold_days: int = 7,
-        threshold_usd: float = 5000
+        threshold_usd: float = 10000
     ) -> Tuple[bool, Optional[str]]:
         """
         Check if this is a new wallet making a suspiciously large bet.
@@ -231,7 +232,7 @@ class InsiderDetector:
         unique_markets: int,
         total_trades: int,
         market_concentration: float,
-        min_trades: int = 5
+        min_trades: int = 10
     ) -> Tuple[bool, Optional[str]]:
         """
         Check if trader only focuses on very few markets.
@@ -240,8 +241,8 @@ class InsiderDetector:
         if total_trades < min_trades:
             return False, None
 
-        # Very concentrated: only 1-2 markets with HHI > 0.5
-        if unique_markets <= 2 and market_concentration > 0.5:
+        # Very concentrated: only 1-2 markets with HHI > 0.7
+        if unique_markets <= 2 and market_concentration > 0.7:
             return True, f"Highly concentrated: {unique_markets} markets, {market_concentration:.0%} HHI"
         return False, None
 
@@ -261,7 +262,7 @@ class InsiderDetector:
     def is_off_hours_trader(
         self,
         off_hours_pct: float,
-        threshold: float = 0.3
+        threshold: float = 0.5
     ) -> Tuple[bool, Optional[str]]:
         """
         Check if trader frequently trades during off-hours.
@@ -274,15 +275,15 @@ class InsiderDetector:
     def is_longshot_winner(
         self,
         longshot_win_rate: float,
-        min_longshot_trades: int = 3,
-        threshold: float = 0.5
+        min_longshot_trades: int = 5,
+        threshold: float = 0.6
     ) -> Tuple[bool, Optional[str]]:
         """
         Check if trader has abnormally high win rate on longshot bets.
-        Signal: Consistently winning at < 20% odds suggests information advantage.
+        Signal: Consistently winning at < 10% odds suggests information advantage.
         """
         if longshot_win_rate >= threshold:
-            return True, f"High longshot win rate: {longshot_win_rate:.0%} on <20% odds bets"
+            return True, f"High longshot win rate: {longshot_win_rate:.0%} on <10% odds bets"
         return False, None
 
     async def update_trader_profile(
@@ -361,12 +362,12 @@ class InsiderDetector:
         prices = [t.price for t in trades if t.price is not None and t.price > 0]
         avg_entry_price = float(np.mean(prices)) if prices else None
 
-        # Longshot win rate (bets at < 20% odds)
-        longshot_trades = [t for t in trades if t.price and t.price < 0.2 and t.is_win is not None]
+        # Longshot win rate (bets at < 10% odds)
+        longshot_trades = [t for t in trades if t.price and t.price < 0.1 and t.is_win is not None]
         longshot_win_rate = (sum(1 for t in longshot_trades if t.is_win) / len(longshot_trades)) if longshot_trades else 0.0
 
-        # Large bet win rate (bets > 2x average)
-        large_trades = [t for t in trades if t.trade_size_usd > avg_bet_size * 2 and t.is_win is not None]
+        # Large bet win rate (bets > 4x average)
+        large_trades = [t for t in trades if t.trade_size_usd > avg_bet_size * 4 and t.is_win is not None]
         large_bet_win_rate = (sum(1 for t in large_trades if t.is_win) / len(large_trades)) if large_trades else 0.0
 
         # Avg hours before resolution
@@ -423,6 +424,10 @@ class InsiderDetector:
             "avg_entry_price": avg_entry_price,
             "longshot_win_rate": longshot_win_rate,
             "large_bet_win_rate": large_bet_win_rate,
+            "longshot_win_rate": longshot_win_rate,
+            "large_bet_win_rate": large_bet_win_rate,
+            "roi": self._calculate_roi(total_pnl, total_volume),
+            "profit_factor": self._calculate_profit_factor(trades),
         }
 
         if profile:
@@ -513,93 +518,81 @@ class InsiderDetector:
     ) -> float:
         """
         Enhanced insider confidence score (0-100).
-        Higher score = more suspicious activity.
-
+        Refactored to prioritize CLOSED TRADE PERFORMANCE.
+        
         Components (total 100 points):
-        1. Percentage of flagged trades (0-15 points)
-        2. Average Z-score of flagged trades (0-10 points)
-        3. Recency of flagged trades (0-10 points)
-        4. Win rate on flagged trades (0-15 points)
-        5. Market concentration (0-10 points) - NEW
-        6. New wallet + large bets (0-10 points) - NEW
-        7. Off-hours trading (0-5 points) - NEW
-        8. Longshot win rate (0-15 points) - NEW
-        9. Large bet win rate (0-10 points) - NEW
+        1. Win Rate (0-30 points) - Proven ability to win
+        2. ROI / Profitability (0-20 points) - Making money
+        3. Longshot Win Rate (0-15 points) - Knowing something others don't
+        4. Large Bet Win Rate (0-10 points) - High conviction wins
+        5. Market Concentration (0-5 points) - Specialist behavior
+        6. Anomaly/Flagged behavior (0-20 points) - Z-score, new wallet, off-hours (aggregated)
         """
         if not trades:
             return 0.0
 
         score = 0.0
         total_trades = len(trades)
+        resolved_trades = [t for t in trades if t.is_resolved]
+        resolved_count = len(resolved_trades)
+        
+        # Calculate ROI
+        total_pnl = sum(t.pnl_usd for t in trades if t.pnl_usd is not None)
+        total_volume = sum(t.trade_size_usd for t in trades if t.trade_size_usd is not None)
+        roi = (total_pnl / total_volume * 100) if total_volume > 0 else 0.0
 
-        # Component 1: Percentage of flagged trades (0-15 points)
-        if total_trades > 0:
-            flagged_percentage = len(flagged_trades) / total_trades
-            score += flagged_percentage * 15
+        # Component 1: Win Rate (0-30 points)
+        # Needs minimum sample size of 5 resolved trades
+        if resolved_count >= 5:
+            # Baseline 50%, Max points at 80%+
+            if win_rate > 50:
+                score += min((win_rate - 50) * 1, 30) # 30 points max (at 80% win rate)
+        
+        # Component 2: ROI / Profitability (0-20 points)
+        # 10% ROI = 5 points, 40%+ ROI = 20 points
+        if roi > 0:
+            score += min(roi * 0.5, 20)
 
-        # Component 2: Average Z-score of flagged trades (0-10 points)
-        if flagged_trades:
-            z_scores = [abs(t.z_score) for t in flagged_trades if t.z_score is not None]
-            if z_scores:
-                avg_z_score = np.mean(z_scores)
-                # Normalize: z-score of 3 = 3.3 points, 6 = 6.7, 9+ = 10
-                score += min(avg_z_score / 9 * 10, 10)
-
-        # Component 3: Recency of flagged trades (0-10 points)
-        recent_trades = [t for t in trades if (datetime.utcnow() - t.timestamp).days <= 7]
-        if recent_trades:
-            recent_flagged = [t for t in recent_trades if t.is_flagged]
-            recent_percentage = len(recent_flagged) / len(recent_trades)
-            score += recent_percentage * 10
-
-        # Component 4: Win rate on flagged trades (0-15 points)
-        if flagged_trades:
-            resolved_flagged = [t for t in flagged_trades if t.is_win is not None]
-            if len(resolved_flagged) >= 3:
-                flagged_win_rate = len(flagged_wins) / len(resolved_flagged)
-                # 50% is baseline, 100% gets full points
-                if flagged_win_rate > 0.5:
-                    score += (flagged_win_rate - 0.5) * 30  # Max 15 points at 100%
-
-        # Component 5: Market concentration (0-10 points) - NEW
-        # High concentration (HHI > 0.5) with enough trades is suspicious
-        if total_trades >= 5 and market_concentration > 0.5:
-            # Scale: 0.5 HHI = 0 points, 1.0 HHI = 10 points
-            score += (market_concentration - 0.5) * 20
-
-        # Component 6: New wallet with activity (0-10 points) - NEW
-        # New wallets (< 7 days) with significant activity are suspicious
-        if wallet_age_days <= 7 and total_trades >= 3:
-            score += 10
-        elif wallet_age_days <= 14 and total_trades >= 5:
-            score += 5
-
-        # Component 7: Off-hours trading (0-5 points) - NEW
-        # Frequent off-hours trading (> 30%) is mildly suspicious
-        if off_hours_trade_pct > 0.3:
-            score += min((off_hours_trade_pct - 0.3) * 16.67, 5)  # Max 5 points
-
-        # Component 8: Longshot win rate (0-15 points) - NEW
-        # High win rate on < 20% odds bets is very suspicious
-        longshot_trades = [t for t in trades if t.price and t.price < 0.2 and t.is_win is not None]
+        # Component 3: Longshot wins (0-15 points)
+        # Already calculated passed in, verify sufficient sample (handled in caller mostly)
+        longshot_trades = [t for t in trades if t.price and t.price < 0.1 and t.is_win is not None]
         if len(longshot_trades) >= 3:
-            if longshot_win_rate > 0.3:  # Better than 30% on longshots
-                score += min((longshot_win_rate - 0.3) * 21.4, 15)  # Max 15 points
+            if longshot_win_rate > 0.4: # >40% win rate on longshots is insane
+                 score += min((longshot_win_rate - 0.4) * 37.5, 15)
 
-        # Component 9: Large bet win rate (0-10 points) - NEW
-        # High win rate on outsized bets is suspicious
+        # Component 4: Large bet wins (0-10 points)
         avg_bet = np.mean([t.trade_size_usd for t in trades]) if trades else 0
-        large_trades = [t for t in trades if t.trade_size_usd > avg_bet * 2 and t.is_win is not None]
-        if len(large_trades) >= 3:
-            if large_bet_win_rate > 0.5:  # Better than 50% on large bets
-                score += min((large_bet_win_rate - 0.5) * 20, 10)  # Max 10 points
+        large_trades = [t for t in trades if t.trade_size_usd > avg_bet * 4 and t.is_win is not None]
+        if len(large_trades) >= 2:
+            if large_bet_win_rate > 0.6:
+                score += min((large_bet_win_rate - 0.6) * 25, 10)
+
+        # Component 5: Market Concentration (0-5 points)
+        if total_trades >= 10 and market_concentration > 0.7:
+             score += (market_concentration - 0.7) * 16.6  # Max 5 points
+
+        # Component 6: Anomaly Aggregation (0-20 points)
+        anomaly_score = 0
+        
+        # a) New wallet (max 10)
+        if wallet_age_days <= 7 and total_trades >= 3:
+            anomaly_score += 10
+        elif wallet_age_days <= 14:
+            anomaly_score += 5
+            
+        # b) Flagged anomalies (max 10)
+        if total_trades > 0:
+            flagged_pct = len(flagged_trades) / total_trades
+            anomaly_score += min(flagged_pct * 20, 10)
+            
+        score += min(anomaly_score, 20)
 
         return min(score, 100.0)
 
     async def get_trending_trades(
         self,
         session: AsyncSession,
-        min_size: float = 5000,
+        min_size: float = 10000,
         hours: int = 24
     ) -> list:
         """

@@ -3,13 +3,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, asc, and_
 from datetime import datetime, timedelta
 from typing import List, Optional
-from app.models.database import get_session, Trade, TraderProfile
+from app.models.database import get_session, Trade, TraderProfile, Market
 from app.schemas.trader import (
     TraderProfileResponse,
     TraderListItem,
     TrendingTrade,
     DashboardStats,
-    TradeResponse
+    TradeResponse,
+    MarketWatchItem
 )
 from app.services.insider_detector import InsiderDetector
 
@@ -288,3 +289,47 @@ async def get_dashboard_stats(
         total_volume_24h=float(total_volume_24h),
         total_pnl_flagged=float(total_pnl_flagged)
     )
+
+
+@router.get("/markets/watch", response_model=List[MarketWatchItem])
+async def get_market_watch(
+    category: Optional[str] = Query(None),
+    sort_by: str = Query("suspicion_score", regex="^(suspicion_score|volatility_score|total_volume|suspicious_trades_count)$"),
+    sort_order: str = Query("desc", regex="^(asc|desc)$"),
+    limit: int = Query(50, le=200),
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Get markets sorted by suspicious activity or volatility.
+    Filter by category (NBA, Politics, Crypto, etc.) if specified.
+    """
+    # Base query for active markets with metrics
+    query = select(Market).where(Market.is_resolved == False)
+
+    # Filter by category if specified
+    if category:
+        query = query.where(Market.category == category)
+
+    # Sorting
+    if sort_by == "suspicion_score":
+        sort_col = Market.suspicion_score
+    elif sort_by == "volatility_score":
+        sort_col = Market.volatility_score
+    elif sort_by == "total_volume":
+        sort_col = Market.total_volume
+    elif sort_by == "suspicious_trades_count":
+        sort_col = Market.suspicious_trades_count
+    else:
+        sort_col = Market.suspicion_score
+
+    if sort_order == "desc":
+        query = query.order_by(desc(sort_col))
+    else:
+        query = query.order_by(asc(sort_col))
+
+    query = query.limit(limit)
+
+    result = await session.execute(query)
+    markets = result.scalars().all()
+
+    return [MarketWatchItem.model_validate(market) for market in markets]

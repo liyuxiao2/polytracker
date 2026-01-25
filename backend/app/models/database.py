@@ -4,9 +4,21 @@ from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean
 from datetime import datetime
 import os
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./polyedge.db")
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql+asyncpg://polytracker:polytracker_dev_password@localhost:5432/polytracker"
+)
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+# Create engine with optimized settings for PostgreSQL
+# For SQLite fallback, these settings are ignored
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_size=20,  # Connection pool size
+    max_overflow=10,  # Additional connections above pool_size
+    pool_pre_ping=True,  # Verify connections before using them
+    pool_recycle=3600,  # Recycle connections after 1 hour
+)
 async_session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 Base = declarative_base()
 
@@ -17,6 +29,7 @@ class Trade(Base):
     id = Column(Integer, primary_key=True, index=True)
     wallet_address = Column(String, index=True, nullable=False)
     market_id = Column(String, index=True, nullable=False)
+    market_slug = Column(String, nullable=True)
     market_name = Column(String, nullable=False)
     trade_size_usd = Column(Float, nullable=False)
     outcome = Column(String, nullable=True)  # YES/NO - what they bet on
@@ -57,6 +70,8 @@ class TraderProfile(Base):
     max_bet_size = Column(Float, default=0.0)
     total_volume = Column(Float, default=0.0)
     total_pnl = Column(Float, default=0.0)
+    roi = Column(Float, default=0.0)  # Return on Investment %
+    profit_factor = Column(Float, default=0.0)  # Gross Win / Gross Loss
     insider_score = Column(Float, default=0.0)  # 0-100
     last_updated = Column(DateTime, default=datetime.utcnow)
     flagged_trades_count = Column(Integer, default=0)
@@ -97,6 +112,31 @@ class Market(Base):
     resolution_time = Column(DateTime, nullable=True)
     end_date = Column(DateTime, nullable=True)
     last_checked = Column(DateTime, default=datetime.utcnow)
+
+    # Market categorization
+    category = Column(String, nullable=True)  # e.g., "NBA", "Politics", "Crypto", etc.
+    tags = Column(String, nullable=True)  # Comma-separated tags
+
+    # Market metrics
+    suspicious_trades_count = Column(Integer, default=0)  # Count of flagged trades
+    total_trades_count = Column(Integer, default=0)  # Total trades in this market
+    total_volume = Column(Float, default=0.0)  # Total USD volume
+    unique_traders_count = Column(Integer, default=0)  # Number of unique wallets
+
+    # Volatility metrics
+    current_yes_price = Column(Float, nullable=True)  # Current YES token price
+    current_no_price = Column(Float, nullable=True)  # Current NO token price
+    price_change_24h = Column(Float, nullable=True)  # % change in last 24h
+    volatility_score = Column(Float, default=0.0)  # Standard deviation of price movements
+
+    # Suspicious activity score (0-100)
+    suspicion_score = Column(Float, default=0.0)  # Based on flagged trades, timing, etc.
+
+    # Liquidity
+    liquidity_usd = Column(Float, nullable=True)  # Total liquidity available
+
+    # Last update timestamp for metrics
+    metrics_updated_at = Column(DateTime, nullable=True)
 
 
 async def init_db():
