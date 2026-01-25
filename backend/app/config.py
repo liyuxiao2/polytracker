@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     """Application configuration settings."""
 
     # Database
-    database_url: str = "sqlite+aiosqlite:///./polyedge.db"
+    database_url: str = "postgresql+asyncpg://polytracker:polytracker_dev_password@localhost:5432/polytracker"
 
     # API
     api_host: str = "0.0.0.0"

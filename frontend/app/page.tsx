@@ -6,6 +6,7 @@ import StatsBar from '@/components/StatsBar';
 import TradersTable from '@/components/TradersTable';
 import LiveFeed from '@/components/LiveFeed';
 import TraderDetail from '@/components/TraderDetail';
+import MarketWatch from '@/components/MarketWatch';
 import { api } from '@/lib/api';
 import { TraderListItem, TrendingTrade, DashboardStats } from '@/lib/types';
 import { RefreshCw } from 'lucide-react';
@@ -18,7 +19,9 @@ export default function Dashboard() {
     total_trades_monitored: 0,
     avg_insider_score: 0,
     total_resolved_trades: 0,
-    avg_win_rate: 0
+    avg_win_rate: 0,
+    total_volume_24h: 0,
+    total_pnl_flagged: 0
   });
   const [traders, setTraders] = useState<TraderListItem[]>([]);
   const [trendingTrades, setTrendingTrades] = useState<TrendingTrade[]>([]);
@@ -180,9 +183,7 @@ export default function Dashboard() {
           )}
 
           {activeView === 'market-watch' && (
-            <div className="bg-slate-800 border border-slate-700 rounded-lg p-8 text-center">
-              <p className="text-slate-400">Market analytics coming soon...</p>
-            </div>
+            <MarketWatch />
           )}
         </div>
       </main>

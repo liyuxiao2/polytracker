@@ -1,10 +1,14 @@
 import asyncio
 from datetime import datetime
+from typing import Optional
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.database import Trade, async_session_maker
 from app.services.polymarket_client import PolymarketClient
 from app.services.insider_detector import InsiderDetector
+from typing import List, Dict, Any
 import os
+import asyncio
 
 
 class DataIngestionWorker:
@@ -12,6 +16,7 @@ class DataIngestionWorker:
         self.client = PolymarketClient()
         self.detector = InsiderDetector()
         self.poll_interval = int(os.getenv("POLL_INTERVAL_SECONDS", "10"))
+        self.min_trade_size = float(os.getenv("MIN_TRADE_SIZE_USD", "50"))
         self.is_running = False
 
     async def start(self):
@@ -41,71 +46,195 @@ class DataIngestionWorker:
         """
         Fetch trades from API, calculate z-scores, and store in database.
         """
+        import time
+        start_time = time.time()
+
         async with async_session_maker() as session:
             trades = await self.client.get_recent_trades(limit=1000)
+            fetch_time = time.time() - start_time
+
+            new_trades = 0
+            flagged_trades = 0
 
             for trade_data in trades:
-                await self._process_single_trade(trade_data, session)
+                result = await self._process_single_trade(trade_data, session)
+                if result:
+                    new_trades += 1
+                    if result.is_flagged:
+                        flagged_trades += 1
 
             await session.commit()
-            print(f"[Worker] Processed {len(trades)} trades")
+            total_time = time.time() - start_time
+            if new_trades > 0:
+                print(f"[Worker] Ingested {new_trades} new trades ({flagged_trades} flagged) [fetch: {fetch_time:.1f}s, total: {total_time:.1f}s]")
 
-    async def _process_single_trade(self, trade_data: dict, session: AsyncSession):
+    async def _process_single_trade(self, trade_data: dict, session: AsyncSession) -> Optional[Trade]:
         """
         Process a single trade: calculate z-score and store.
+        Returns the Trade object if created, None if skipped.
         """
         try:
             wallet_address = trade_data.get("maker_address", "")
             trade_size_usd = float(trade_data.get("size", 0))
-            
-            # Filter out bot trades / small trades
-            if trade_size_usd < 50:
-                return
 
+            # Filter out bot trades / small trades
+            if trade_size_usd < self.min_trade_size:
+                return None
+
+            # Get transaction hash for deduplication (primary method)
+            transaction_hash = trade_data.get("id", "")
+
+            # Skip if trade already exists using transaction_hash (best deduplication)
+            if transaction_hash:
+                existing = await session.execute(
+                    select(Trade).where(Trade.transaction_hash == transaction_hash)
+                )
+                if existing.scalar_one_or_none():
+                    return None
+
+            # Parse all trade fields
             market_id = trade_data.get("market", "")
+            market_slug = trade_data.get("event_slug", "")
             market_name = trade_data.get("market_name", "Unknown Market")
             timestamp = datetime.fromtimestamp(int(trade_data.get("timestamp", 0)) / 1000)
 
-            # Skip if trade already exists (simple deduplication)
-            trade_id = trade_data.get("id", "")
-            from sqlalchemy import select
-            existing = await session.execute(
-                select(Trade).where(
-                    (Trade.wallet_address == wallet_address) &
-                    (Trade.market_id == market_id) &
-                    (Trade.timestamp == timestamp)
-                )
-            )
-            if existing.scalar_one_or_none():
-                return
+            # NEW: Parse trade direction and type
+            side = trade_data.get("side", "").upper()  # BUY or SELL
+            if side not in ("BUY", "SELL"):
+                side = None
 
-            # Calculate z-score
+            # Determine outcome (YES/NO) from the trade
+            outcome = trade_data.get("outcome", "")
+            if outcome not in ("YES", "NO"):
+                outcome = None
+
+            # Parse price (0-1 decimal representing probability)
+            price = float(trade_data.get("price", 0))
+
+            # Asset ID for tracking specific tokens
+            asset_id = trade_data.get("asset_id", "")
+
+            # Calculate z-score for anomaly detection
             z_score, is_flagged = await self.detector.calculate_z_score(
                 wallet_address, trade_size_usd, session
             )
 
-            # Create trade record
+            # Determine flag reason if flagged
+            flag_reason = None
+            if is_flagged:
+                if z_score > 0:
+                    flag_reason = f"Unusually large bet (z-score: {z_score:.2f})"
+                else:
+                    flag_reason = f"Unusually small bet (z-score: {z_score:.2f})"
+
+            # Create trade record with all new fields
             trade = Trade(
                 wallet_address=wallet_address,
                 market_id=market_id,
+                market_slug=market_slug,
                 market_name=market_name,
                 trade_size_usd=trade_size_usd,
-                outcome=trade_data.get("outcome"),
-                price=float(trade_data.get("price", 0)),
+                outcome=outcome,
+                price=price,
                 timestamp=timestamp,
                 is_flagged=is_flagged,
+                flag_reason=flag_reason,
                 z_score=z_score,
-                is_win=trade_data.get("is_win")
+                # Trade direction fields
+                side=side,
+                trade_type=None,  # Not available from API yet
+                transaction_hash=transaction_hash if transaction_hash else None,
+                asset_id=asset_id if asset_id else None,
+                # Timing analysis field
+                trade_hour_utc=timestamp.hour,
             )
 
             session.add(trade)
 
-            # Update trader profile if this is a flagged trade
-            if is_flagged:
-                await self.detector.update_trader_profile(wallet_address, session)
+            # Update trader profile if this is a flagged trade or occasionally
+            if is_flagged or new_trades % 10 == 0:
+                profile = await self.detector.update_trader_profile(wallet_address, session)
+                
+                # Check for backfill if profile exists and has few trades (indicating new discovery)
+                if profile and profile.total_trades < 50:
+                    # Trigger background backfill
+                    asyncio.create_task(self._backfill_trader_history(wallet_address))
+
+            return trade
 
         except Exception as e:
             print(f"[Worker] Error processing trade: {e}")
+            return None
+
+    async def _backfill_trader_history(self, wallet_address: str):
+        """
+        Fetch historical trades for a wallet to populate profile stats immediately.
+        """
+        print(f"[Worker] Backfilling history for {wallet_address}...")
+        try:
+            # Polymarket API returns recent activity
+            activity = await self.client.get_user_activity(wallet_address, limit=500)
+            
+            if not activity:
+                return
+
+            async with async_session_maker() as session:
+                count = 0
+                for item in activity:
+                    # Parse activity item to Trade format
+                    txn_hash = item.get("transactionHash")
+                    if not txn_hash:
+                        continue
+                        
+                    # Skip if exists
+                    existing = await session.execute(
+                        select(Trade).where(Trade.transaction_hash == txn_hash)
+                    )
+                    if existing.scalar_one_or_none():
+                        continue
+                        
+                    # Extract fields
+                    market_id = item.get("conditionId") or "" # Activity might not have conditionId sometimes?
+                    # Check if type is trade
+                    if item.get("type", "").upper() not in ("TRADE", "ERC1155_TRANSFER", "CTF_TRADE"):
+                        continue
+                        
+                    # Attempt to reconstruct trade
+                    price = float(item.get("price", 0))
+                    size = float(item.get("usdcSize", 0))
+                    
+                    if size < self.min_trade_size:
+                        continue
+                        
+                    timestamp = datetime.fromtimestamp(int(item.get("timestamp", 0)))
+                    
+                    trade = Trade(
+                        wallet_address=wallet_address,
+                        market_id=market_id,
+                        market_name=item.get("title") or "Backfilled Trade",
+                        market_slug=item.get("eventSlug"),
+                        trade_size_usd=size,
+                        outcome=item.get("outcome"),
+                        price=price,
+                        timestamp=timestamp,
+                        is_flagged=False,
+                        side=item.get("side", "").upper(),
+                        transaction_hash=txn_hash,
+                        trade_hour_utc=timestamp.hour
+                    )
+                    
+                    # We might not have resolution info yet, resolution worker will pick it up
+                    session.add(trade)
+                    count += 1
+                
+                await session.commit()
+                if count > 0:
+                    print(f"[Worker] Backfilled {count} trades for {wallet_address}")
+                    # Update profile again with full history
+                    await self.detector.update_trader_profile(wallet_address, session)
+                    
+        except Exception as e:
+            print(f"[Worker] Error backfilling {wallet_address}: {e}")
 
 
 # Global worker instance

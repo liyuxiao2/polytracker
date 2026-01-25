@@ -1,14 +1,24 @@
 'use client';
 
-import { AlertTriangle, Activity, Target, Trophy } from 'lucide-react';
+import { Target, Trophy, DollarSign, TrendingUp } from 'lucide-react';
 import { DashboardStats } from '@/lib/types';
-import { formatNumber } from '@/lib/utils';
+import { formatNumber, formatCurrency } from '@/lib/utils';
 
 interface StatsBarProps {
   stats: DashboardStats;
 }
 
 export default function StatsBar({ stats }: StatsBarProps) {
+  // Format volume for display (e.g., $1.2M, $500K)
+  const formatVolume = (value: number) => {
+    if (value >= 1_000_000) {
+      return `$${(value / 1_000_000).toFixed(1)}M`;
+    } else if (value >= 1_000) {
+      return `$${(value / 1_000).toFixed(0)}K`;
+    }
+    return formatCurrency(value);
+  };
+
   const statCards = [
     {
       title: 'Whales Tracked',
@@ -18,28 +28,30 @@ export default function StatsBar({ stats }: StatsBarProps) {
       color: 'blue',
     },
     {
-      title: 'Resolved Trades',
-      value: stats.total_resolved_trades,
+      title: '24h Volume',
+      value: stats.total_volume_24h,
       decimals: 0,
-      subtitle: 'Won/Lost Known',
-      icon: Activity,
+      displayValue: formatVolume(stats.total_volume_24h),
+      icon: TrendingUp,
       color: 'green',
     },
     {
       title: 'Flagged Win Rate',
       value: stats.avg_win_rate,
       decimals: 1,
-      subtitle: 'Flagged Trades',
+      subtitle: `${stats.total_resolved_trades} resolved`,
       icon: Trophy,
       color: 'yellow',
       suffix: '%',
     },
     {
-      title: 'Alerts Today',
-      value: stats.high_signal_alerts_today,
+      title: 'Flagged PnL',
+      value: stats.total_pnl_flagged,
       decimals: 0,
-      icon: AlertTriangle,
-      color: 'red',
+      displayValue: formatVolume(stats.total_pnl_flagged),
+      subtitle: `${stats.high_signal_alerts_today} alerts today`,
+      icon: DollarSign,
+      color: stats.total_pnl_flagged >= 0 ? 'green' : 'red',
     },
   ];
 
@@ -65,7 +77,7 @@ export default function StatsBar({ stats }: StatsBarProps) {
                   {stat.title}
                 </p>
                 <p className="text-3xl font-bold text-white mt-2">
-                  {formatNumber(stat.value, stat.decimals)}{('suffix' in stat) ? stat.suffix : ''}
+                  {('displayValue' in stat) ? stat.displayValue : formatNumber(stat.value, stat.decimals)}{('suffix' in stat) ? stat.suffix : ''}
                 </p>
                 {stat.subtitle && (
                   <p className="text-xs text-slate-500 mt-1">{stat.subtitle}</p>
