@@ -71,7 +71,8 @@ class MarketWatchWorker:
     async def update_market_from_api(self, session: AsyncSession, market_data: dict):
         """Update or create a market from API data"""
         try:
-            market_id = market_data.get("condition_id") or market_data.get("id")
+            # Use conditionId as the primary market_id (matches trade records)
+            market_id = market_data.get("conditionId") or market_data.get("condition_id")
             if not market_id:
                 return
 
@@ -88,11 +89,11 @@ class MarketWatchWorker:
                 # Create new market
                 market = Market(
                     market_id=market_id,
-                    condition_id=market_data.get("condition_id"),
+                    condition_id=market_id,
                     question=question,
                     category=category,
                     is_resolved=market_data.get("closed", False),
-                    end_date=self._parse_datetime(market_data.get("end_date_iso")),
+                    end_date=self._parse_datetime(market_data.get("endDateIso") or market_data.get("end_date_iso")),
                     last_checked=datetime.utcnow()
                 )
                 session.add(market)
@@ -101,7 +102,7 @@ class MarketWatchWorker:
                 market.question = question
                 market.category = category
                 market.is_resolved = market_data.get("closed", False)
-                market.end_date = self._parse_datetime(market_data.get("end_date_iso"))
+                market.end_date = self._parse_datetime(market_data.get("endDateIso") or market_data.get("end_date_iso"))
                 market.last_checked = datetime.utcnow()
 
             # Update prices from tokens

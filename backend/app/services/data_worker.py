@@ -103,10 +103,10 @@ class DataIngestionWorker:
             if side not in ("BUY", "SELL"):
                 side = None
 
-            # Determine outcome (YES/NO) from the trade
+            # Determine outcome (YES/NO/Up/Down/TeamName) from the trade
             outcome = trade_data.get("outcome", "")
-            if outcome not in ("YES", "NO"):
-                outcome = None
+            # Removed strict YES/NO check to support all market types
+
 
             # Parse price (0-1 decimal representing probability)
             price = float(trade_data.get("price", 0))
@@ -151,8 +151,8 @@ class DataIngestionWorker:
 
             session.add(trade)
 
-            # Update trader profile if this is a flagged trade or occasionally
-            if is_flagged or new_trades % 10 == 0:
+            # Update trader profile if this is a flagged trade
+            if is_flagged:
                 profile = await self.detector.update_trader_profile(wallet_address, session)
                 
                 # Check for backfill if profile exists and has few trades (indicating new discovery)

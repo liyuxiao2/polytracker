@@ -6,7 +6,9 @@
       "Bash(docker-compose ps:*)",
       "Bash(docker compose:*)",
       "Bash(docker --version:*)",
-      "Bash(open:*)"
+      "Bash(open:*)",
+      "Bash(/usr/local/bin/docker exec:*)",
+      "Bash(python3:*)"
     ]
   }
 }

@@ -374,6 +374,16 @@ class InsiderDetector:
         resolved_with_timing = [t for t in resolved_trades if t.hours_before_resolution is not None]
         avg_hours_before_resolution = float(np.mean([t.hours_before_resolution for t in resolved_with_timing])) if resolved_with_timing else None
 
+        # Unrealized P&L metrics (from open positions)
+        open_positions = [t for t in trades if t.is_win is None and t.unrealized_pnl_usd is not None]
+        open_positions_count = len(open_positions)
+        total_unrealized_pnl = sum(t.unrealized_pnl_usd for t in open_positions) if open_positions else 0.0
+        avg_unrealized_pnl = (total_unrealized_pnl / open_positions_count) if open_positions_count > 0 else 0.0
+        open_capital = sum(t.trade_size_usd for t in open_positions) if open_positions else 0.0
+        unrealized_roi = (total_unrealized_pnl / open_capital * 100) if open_capital > 0 else 0.0
+        unrealized_win_count = sum(1 for t in open_positions if t.unrealized_pnl_usd > 0)
+        unrealized_win_rate = (unrealized_win_count / open_positions_count * 100) if open_positions_count > 0 else 0.0
+
         # Calculate insider score with all components
         insider_score = self._calculate_insider_score_v2(
             trades=trades,
@@ -385,7 +395,10 @@ class InsiderDetector:
             market_concentration=market_concentration,
             off_hours_trade_pct=off_hours_trade_pct,
             longshot_win_rate=longshot_win_rate,
-            large_bet_win_rate=large_bet_win_rate
+            large_bet_win_rate=large_bet_win_rate,
+            open_positions_count=open_positions_count,
+            unrealized_roi=unrealized_roi,
+            unrealized_win_rate=unrealized_win_rate
         )
 
         # Get or create profile
@@ -428,6 +441,13 @@ class InsiderDetector:
             "large_bet_win_rate": large_bet_win_rate,
             "roi": self._calculate_roi(total_pnl, total_volume),
             "profit_factor": self._calculate_profit_factor(trades),
+            # Unrealized P&L fields
+            "open_positions_count": open_positions_count,
+            "total_unrealized_pnl": total_unrealized_pnl,
+            "avg_unrealized_pnl": avg_unrealized_pnl,
+            "unrealized_roi": unrealized_roi,
+            "unrealized_win_count": unrealized_win_count,
+            "unrealized_win_rate": unrealized_win_rate,
         }
 
         if profile:
@@ -503,6 +523,26 @@ class InsiderDetector:
 
         return min(score, 100.0)
 
+    def _calculate_roi(self, total_pnl: float, total_volume: float) -> float:
+        """
+        Calculate Return on Investment (ROI) percentage.
+        """
+        if total_volume == 0:
+            return 0.0
+        return (total_pnl / total_volume) * 100
+
+    def _calculate_profit_factor(self, trades: list) -> float:
+        """
+        Calculate Profit Factor (Gross Win / Gross Loss).
+        """
+        gross_win = sum(t.pnl_usd for t in trades if t.pnl_usd and t.pnl_usd > 0)
+        gross_loss = abs(sum(t.pnl_usd for t in trades if t.pnl_usd and t.pnl_usd < 0))
+        
+        if gross_loss == 0:
+            return gross_win if gross_win > 0 else 0.0
+            
+        return gross_win / gross_loss
+
     def _calculate_insider_score_v2(
         self,
         trades: list,
@@ -514,19 +554,23 @@ class InsiderDetector:
         market_concentration: float,
         off_hours_trade_pct: float,
         longshot_win_rate: float,
-        large_bet_win_rate: float
+        large_bet_win_rate: float,
+        open_positions_count: int = 0,
+        unrealized_roi: float = 0.0,
+        unrealized_win_rate: float = 0.0
     ) -> float:
         """
         Enhanced insider confidence score (0-100).
-        Refactored to prioritize CLOSED TRADE PERFORMANCE.
-        
+        Includes BOTH closed trade performance AND unrealized P&L on open positions.
+
         Components (total 100 points):
-        1. Win Rate (0-30 points) - Proven ability to win
+        1. Win Rate (0-25 points) - Proven ability to win
         2. ROI / Profitability (0-20 points) - Making money
-        3. Longshot Win Rate (0-15 points) - Knowing something others don't
-        4. Large Bet Win Rate (0-10 points) - High conviction wins
-        5. Market Concentration (0-5 points) - Specialist behavior
-        6. Anomaly/Flagged behavior (0-20 points) - Z-score, new wallet, off-hours (aggregated)
+        3. Unrealized P&L Performance (0-15 points) - IMMEDIATE signal from open positions
+        4. Longshot Win Rate (0-15 points) - Knowing something others don't
+        5. Large Bet Win Rate (0-10 points) - High conviction wins
+        6. Market Concentration (0-5 points) - Specialist behavior
+        7. Anomaly/Flagged behavior (0-10 points) - Z-score, new wallet, off-hours (aggregated)
         """
         if not trades:
             return 0.0
@@ -541,51 +585,70 @@ class InsiderDetector:
         total_volume = sum(t.trade_size_usd for t in trades if t.trade_size_usd is not None)
         roi = (total_pnl / total_volume * 100) if total_volume > 0 else 0.0
 
-        # Component 1: Win Rate (0-30 points)
-        # Needs minimum sample size of 5 resolved trades
-        if resolved_count >= 5:
-            # Baseline 50%, Max points at 80%+
-            if win_rate > 50:
-                score += min((win_rate - 50) * 1, 30) # 30 points max (at 80% win rate)
+        # Component 1: Win Rate (0-25 points)
+        # Needs minimum sample size of 3 resolved trades (relaxed from 5)
+        if resolved_count >= 3:
+            # Baseline 40%, Max points at 80%+ (relaxed from 50%)
+            if win_rate > 40:
+                score += min((win_rate - 40) * 0.625, 25) 
         
         # Component 2: ROI / Profitability (0-20 points)
-        # 10% ROI = 5 points, 40%+ ROI = 20 points
-        if roi > 0:
-            score += min(roi * 0.5, 20)
+        # Even slightly negative ROI isn't terrible if they are winning lots of bets
+        # Relaxed: > -5% ROI starts getting points
+        if roi > -5:
+            score += min((roi + 5) * 0.5, 20)
 
-        # Component 3: Longshot wins (0-15 points)
+        # Component 3: Unrealized P&L Performance (0-15 points)
+        # This provides IMMEDIATE signal before trades resolve
+        # Requires minimum 2 open positions to be meaningful
+        if open_positions_count >= 2:
+            unrealized_score = 0
+
+            # Sub-component A: Unrealized ROI (0-8 points)
+            # Positive ROI on open positions indicates predictive edge
+            if unrealized_roi > 0:
+                unrealized_score += min(unrealized_roi * 0.4, 8)  # Max at 20% ROI
+
+            # Sub-component B: Unrealized Win Rate (0-7 points)
+            # High % of positions in profit
+            if unrealized_win_rate > 50:
+                unrealized_score += min((unrealized_win_rate - 50) * 0.14, 7)  # Max at 100%
+
+            score += unrealized_score
+
+        # Component 4: Longshot wins (0-15 points)
         # Already calculated passed in, verify sufficient sample (handled in caller mostly)
         longshot_trades = [t for t in trades if t.price and t.price < 0.1 and t.is_win is not None]
-        if len(longshot_trades) >= 3:
-            if longshot_win_rate > 0.4: # >40% win rate on longshots is insane
-                 score += min((longshot_win_rate - 0.4) * 37.5, 15)
+        if len(longshot_trades) >= 2: # Relaxed from 3
+            if longshot_win_rate > 0.25: # Relaxed from 0.4
+                 score += min((longshot_win_rate - 0.25) * 50, 15)
 
-        # Component 4: Large bet wins (0-10 points)
+        # Component 5: Large bet wins (0-10 points)
         avg_bet = np.mean([t.trade_size_usd for t in trades]) if trades else 0
         large_trades = [t for t in trades if t.trade_size_usd > avg_bet * 4 and t.is_win is not None]
         if len(large_trades) >= 2:
-            if large_bet_win_rate > 0.6:
-                score += min((large_bet_win_rate - 0.6) * 25, 10)
+            if large_bet_win_rate > 0.5: # Relaxed from 0.6
+                score += min((large_bet_win_rate - 0.5) * 20, 10)
 
-        # Component 5: Market Concentration (0-5 points)
-        if total_trades >= 10 and market_concentration > 0.7:
+        # Component 6: Market Concentration (0-5 points)
+        if total_trades >= 5 and market_concentration > 0.7: # Relaxed trades req from 10
              score += (market_concentration - 0.7) * 16.6  # Max 5 points
 
-        # Component 6: Anomaly Aggregation (0-20 points)
+        # Component 7: Anomaly Aggregation (0-10 points)
         anomaly_score = 0
-        
-        # a) New wallet (max 10)
+
+        # a) New wallet (max 5)
         if wallet_age_days <= 7 and total_trades >= 3:
-            anomaly_score += 10
-        elif wallet_age_days <= 14:
             anomaly_score += 5
-            
-        # b) Flagged anomalies (max 10)
+        elif wallet_age_days <= 14:
+            anomaly_score += 2.5
+
+        # b) Flagged anomalies (max 5)
         if total_trades > 0:
             flagged_pct = len(flagged_trades) / total_trades
-            anomaly_score += min(flagged_pct * 20, 10)
-            
-        score += min(anomaly_score, 20)
+            anomaly_score += min(flagged_pct * 10, 5)
+
+        score += min(anomaly_score, 10)
 
         return min(score, 100.0)
 

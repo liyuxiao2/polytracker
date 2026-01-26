@@ -29,6 +29,11 @@ class TradeResponse(TradeBase):
     is_win: Optional[bool] = None
     pnl_usd: Optional[float] = None
     transaction_hash: Optional[str] = None
+    # Unrealized P&L fields (for open positions)
+    unrealized_pnl_usd: Optional[float] = None
+    current_position_value_usd: Optional[float] = None
+    shares_held: Optional[float] = None
+    last_pnl_update: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -67,6 +72,13 @@ class TraderProfileResponse(BaseModel):
     avg_entry_price: Optional[float] = None
     longshot_win_rate: float = 0.0  # Win rate on < 20% odds bets
     large_bet_win_rate: float = 0.0  # Win rate on bets > 2x average
+    # Unrealized P&L metrics (for current open positions)
+    open_positions_count: int = 0
+    total_unrealized_pnl: float = 0.0
+    avg_unrealized_pnl: float = 0.0
+    unrealized_roi: float = 0.0
+    unrealized_win_count: int = 0
+    unrealized_win_rate: float = 0.0
 
     class Config:
         from_attributes = True
@@ -98,6 +110,7 @@ class TrendingTrade(BaseModel):
     side: Optional[str] = None  # BUY or SELL
     price: Optional[float] = None
     pnl_usd: Optional[float] = None
+    unrealized_pnl_usd: Optional[float] = None  # For open positions
     # Timing analysis
     hours_before_resolution: Optional[float] = None
     trade_hour_utc: Optional[int] = None
@@ -113,6 +126,10 @@ class DashboardStats(BaseModel):
     # NEW stats
     total_volume_24h: float = 0.0
     total_pnl_flagged: float = 0.0
+    # Unrealized P&L stats
+    total_open_positions: int = 0
+    total_unrealized_pnl: float = 0.0
+    avg_unrealized_roi: float = 0.0
 
 
 class PolymarketTradeEvent(BaseModel):

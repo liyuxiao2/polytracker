@@ -55,6 +55,12 @@ class Trade(Base):
     hours_before_resolution = Column(Float, nullable=True)  # Hours between trade and market resolution
     trade_hour_utc = Column(Integer, nullable=True)  # Hour of day (0-23) when trade was placed
 
+    # Unrealized P&L tracking (for open positions)
+    unrealized_pnl_usd = Column(Float, nullable=True)  # Current profit/loss if position were closed now
+    current_position_value_usd = Column(Float, nullable=True)  # Current market value of position
+    shares_held = Column(Float, nullable=True)  # Number of shares purchased (size/price)
+    last_pnl_update = Column(DateTime, nullable=True)  # When P&L was last calculated
+
 
 class TraderProfile(Base):
     __tablename__ = "trader_profiles"
@@ -97,6 +103,14 @@ class TraderProfile(Base):
     avg_entry_price = Column(Float, nullable=True)  # Average price they enter positions at
     longshot_win_rate = Column(Float, default=0.0)  # Win rate on bets with price < 0.2
     large_bet_win_rate = Column(Float, default=0.0)  # Win rate on bets > 2x their average
+
+    # Unrealized P&L metrics (for current open positions)
+    open_positions_count = Column(Integer, default=0)  # Number of unresolved trades
+    total_unrealized_pnl = Column(Float, default=0.0)  # Sum of all unrealized P&L
+    avg_unrealized_pnl = Column(Float, default=0.0)  # Average per open position
+    unrealized_roi = Column(Float, default=0.0)  # (total_unrealized_pnl / total_open_capital) * 100
+    unrealized_win_count = Column(Integer, default=0)  # Open positions with positive P&L
+    unrealized_win_rate = Column(Float, default=0.0)  # % of open positions currently winning
 
 
 class Market(Base):
