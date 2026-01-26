@@ -201,6 +201,31 @@ async def get_trader_trades(
     return [TradeResponse.model_validate(trade) for trade in trades]
 
 
+@router.get("/trader/{address}/open-positions", response_model=List[TradeResponse])
+async def get_trader_open_positions(
+    address: str,
+    min_unrealized_pnl: Optional[float] = Query(None, description="Filter positions with unrealized P&L >= this value"),
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Get current open positions (unresolved trades) with unrealized P&L for a specific trader.
+    Useful for seeing what a trader is currently betting on and how they're performing in real-time.
+    """
+    query = select(Trade).where(
+        (Trade.wallet_address == address) &
+        (Trade.is_win.is_(None)) &
+        (Trade.unrealized_pnl_usd.isnot(None))
+    ).order_by(desc(Trade.unrealized_pnl_usd))
+
+    if min_unrealized_pnl is not None:
+        query = query.where(Trade.unrealized_pnl_usd >= min_unrealized_pnl)
+
+    result = await session.execute(query)
+    trades = result.scalars().all()
+
+    return [TradeResponse.model_validate(trade) for trade in trades]
+
+
 @router.get("/stats", response_model=DashboardStats)
 async def get_dashboard_stats(
     session: AsyncSession = Depends(get_session)
@@ -279,6 +304,25 @@ async def get_dashboard_stats(
     )
     total_pnl_flagged = pnl_result.scalar() or 0.0
 
+    # NEW: Unrealized P&L statistics (open positions)
+    open_positions_result = await session.execute(
+        select(func.count(Trade.id))
+        .where((Trade.is_win.is_(None)) & (Trade.unrealized_pnl_usd.isnot(None)))
+    )
+    total_open_positions = open_positions_result.scalar() or 0
+
+    unrealized_pnl_result = await session.execute(
+        select(func.sum(Trade.unrealized_pnl_usd))
+        .where(Trade.unrealized_pnl_usd.isnot(None))
+    )
+    total_unrealized_pnl = unrealized_pnl_result.scalar() or 0.0
+
+    avg_unrealized_roi_result = await session.execute(
+        select(func.avg(TraderProfile.unrealized_roi))
+        .where(TraderProfile.open_positions_count > 0)
+    )
+    avg_unrealized_roi = avg_unrealized_roi_result.scalar() or 0.0
+
     return DashboardStats(
         total_whales_tracked=total_whales,
         high_signal_alerts_today=alerts_today,
@@ -287,7 +331,10 @@ async def get_dashboard_stats(
         total_resolved_trades=total_resolved,
         avg_win_rate=float(avg_win_rate),
         total_volume_24h=float(total_volume_24h),
-        total_pnl_flagged=float(total_pnl_flagged)
+        total_pnl_flagged=float(total_pnl_flagged),
+        total_open_positions=total_open_positions,
+        total_unrealized_pnl=float(total_unrealized_pnl),
+        avg_unrealized_roi=float(avg_unrealized_roi)
     )
 
 
@@ -333,3 +380,23 @@ async def get_market_watch(
     markets = result.scalars().all()
 
     return [MarketWatchItem.model_validate(market) for market in markets]
+
+
+@router.get("/markets/{market_id}/trades", response_model=List[TradeResponse])
+async def get_market_trades(
+    market_id: str,
+    limit: int = Query(50, le=500),
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Get trade history for a specific market.
+    """
+    result = await session.execute(
+        select(Trade)
+        .where(Trade.market_id == market_id)
+        .order_by(desc(Trade.timestamp))
+        .limit(limit)
+    )
+    trades = result.scalars().all()
+
+    return [TradeResponse.model_validate(trade) for trade in trades]

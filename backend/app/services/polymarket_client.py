@@ -128,7 +128,7 @@ class PolymarketClient:
             if closed:
                 params["closed"] = "true"
             else:
-                params["active"] = "true"
+                params["closed"] = "false"
 
             response = await self.client.get(
                 f"{self.gamma_api_base}/markets",
