@@ -286,7 +286,7 @@ export default function MarketWatch() {
                       Recent Trades
                     </h4>
                     <a
-                      href={`https://polymarket.com/event/${market.market_id}`} // Note: market_id might not be the slug, but it's a best effort link
+                      href={`https://polymarket.com/event/${market.market_slug}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"

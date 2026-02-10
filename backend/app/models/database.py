@@ -3,22 +3,29 @@ from sqlalchemy.orm import declarative_base
 from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean
 from datetime import datetime
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql+asyncpg://polytracker:polytracker_dev_password@localhost:5432/polytracker"
 )
 
-# Create engine with optimized settings for PostgreSQL
-# For SQLite fallback, these settings are ignored
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=False,
-    pool_size=20,  # Connection pool size
-    max_overflow=10,  # Additional connections above pool_size
-    pool_pre_ping=True,  # Verify connections before using them
-    pool_recycle=3600,  # Recycle connections after 1 hour
-)
+# Create engine with appropriate settings based on database type
+if DATABASE_URL.startswith("sqlite"):
+    # SQLite doesn't support connection pooling options
+    engine = create_async_engine(DATABASE_URL, echo=False)
+else:
+    # PostgreSQL with optimized connection pooling
+    engine = create_async_engine(
+        DATABASE_URL,
+        echo=False,
+        pool_size=20,
+        max_overflow=10,
+        pool_pre_ping=True,
+        pool_recycle=3600,
+    )
 async_session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 Base = declarative_base()
 
@@ -119,6 +126,7 @@ class Market(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     market_id = Column(String, unique=True, index=True, nullable=False)
+    market_slug = Column(String, nullable=True)
     condition_id = Column(String, nullable=True)
     question = Column(String, nullable=True)
     is_resolved = Column(Boolean, default=False)
@@ -151,6 +159,116 @@ class Market(Base):
 
     # Last update timestamp for metrics
     metrics_updated_at = Column(DateTime, nullable=True)
+
+
+class MarketSnapshot(Base):
+    """
+    Periodic snapshots of market order book state for backtesting.
+    Captures bid/ask/spread/liquidity at regular intervals.
+    """
+    __tablename__ = "market_snapshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    timestamp = Column(DateTime, index=True, nullable=False)
+    market_id = Column(String, index=True, nullable=False)  # condition_id
+
+    # Token IDs (needed for CLOB API queries)
+    yes_token_id = Column(String, nullable=True)
+    no_token_id = Column(String, nullable=True)
+
+    # YES outcome order book
+    yes_best_bid = Column(Float, nullable=True)
+    yes_best_ask = Column(Float, nullable=True)
+    yes_spread = Column(Float, nullable=True)
+    yes_bid_liquidity = Column(Float, nullable=True)  # Total size at top 5 bid levels
+    yes_ask_liquidity = Column(Float, nullable=True)  # Total size at top 5 ask levels
+    yes_best_bid_size = Column(Float, nullable=True)  # Size at best bid (top of book)
+    yes_best_ask_size = Column(Float, nullable=True)  # Size at best ask (top of book)
+    yes_mid_price = Column(Float, nullable=True)
+
+    # NO outcome order book
+    no_best_bid = Column(Float, nullable=True)
+    no_best_ask = Column(Float, nullable=True)
+    no_spread = Column(Float, nullable=True)
+    no_bid_liquidity = Column(Float, nullable=True)
+    no_ask_liquidity = Column(Float, nullable=True)
+    no_best_bid_size = Column(Float, nullable=True)  # Size at best bid (top of book)
+    no_best_ask_size = Column(Float, nullable=True)  # Size at best ask (top of book)
+    no_mid_price = Column(Float, nullable=True)
+
+    # Market-level metrics
+    total_liquidity = Column(Float, nullable=True)
+    volume_24h = Column(Float, nullable=True)
+
+    # Composite index for efficient time-series queries
+    __table_args__ = (
+        # Index for querying snapshots by market and time range
+        # CREATE INDEX ix_market_snapshots_market_time ON market_snapshots(market_id, timestamp)
+    )
+
+
+class PriceHistory(Base):
+    """
+    Historical price timeseries for backtesting.
+    Stores price data at configurable intervals (1m, 5m, 1h, etc.)
+    """
+    __tablename__ = "price_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    timestamp = Column(DateTime, index=True, nullable=False)
+    market_id = Column(String, index=True, nullable=False)  # condition_id
+    token_id = Column(String, index=True, nullable=False)  # CLOB token ID
+    outcome = Column(String, nullable=False)  # YES or NO
+
+    # Price data
+    price = Column(Float, nullable=False)
+
+    # Optional OHLCV data (if available)
+    open_price = Column(Float, nullable=True)
+    high_price = Column(Float, nullable=True)
+    low_price = Column(Float, nullable=True)
+    close_price = Column(Float, nullable=True)
+    volume = Column(Float, nullable=True)
+
+    # Interval indicator (e.g., '1m', '5m', '1h')
+    interval = Column(String, nullable=True)
+
+    # Composite index for efficient queries
+    __table_args__ = (
+        # Index for querying price history by market, outcome, and time
+        # CREATE INDEX ix_price_history_market_outcome_time ON price_history(market_id, outcome, timestamp)
+    )
+
+
+class TrackedMarket(Base):
+    """
+    Markets we're actively tracking for snapshots.
+    Stores token IDs and metadata for snapshot collection.
+    """
+    __tablename__ = "tracked_markets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    market_id = Column(String, unique=True, index=True, nullable=False)  # condition_id
+    question = Column(String, nullable=True)
+    category = Column(String, nullable=True)  # politics, sports, crypto, etc.
+
+    # CLOB token IDs (required for order book queries)
+    yes_token_id = Column(String, nullable=True)
+    no_token_id = Column(String, nullable=True)
+
+    # Tracking config
+    is_active = Column(Boolean, default=True)
+    snapshot_interval_seconds = Column(Integer, default=300)  # Default 5 min
+
+    # Market metadata
+    volume = Column(Float, default=0.0)
+    liquidity = Column(Float, default=0.0)
+    end_date = Column(DateTime, nullable=True)
+    is_closed = Column(Boolean, default=False)
+
+    # Timestamps
+    added_at = Column(DateTime, default=datetime.utcnow)
+    last_snapshot_at = Column(DateTime, nullable=True)
 
 
 async def init_db():

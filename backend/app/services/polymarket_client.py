@@ -207,5 +207,203 @@ class PolymarketClient:
             print(f"Error fetching historical trades: {e}")
             return []
 
+    async def get_price_history(
+        self,
+        token_id: str,
+        interval: str = "1d",
+        fidelity: int = 60,
+        start_ts: int = None,
+        end_ts: int = None
+    ) -> List[dict]:
+        """
+        Fetch historical price data for a token from CLOB API.
+
+        Args:
+            token_id: The CLOB token ID (not condition_id - each outcome has its own token)
+            interval: Duration - '1m', '1h', '6h', '1d', '1w', 'max' (mutually exclusive with start_ts/end_ts)
+            fidelity: Resolution in minutes (e.g., 5 = 5-minute candles)
+            start_ts: Unix timestamp for start of range (optional, use instead of interval)
+            end_ts: Unix timestamp for end of range (optional, use instead of interval)
+
+        Returns:
+            List of {timestamp, price} dicts
+        """
+        try:
+            params = {"market": token_id}
+
+            if start_ts and end_ts:
+                params["startTs"] = start_ts
+                params["endTs"] = end_ts
+            else:
+                params["interval"] = interval
+
+            if fidelity:
+                params["fidelity"] = fidelity
+
+            response = await self.client.get(
+                f"{self.clob_api_base}/prices-history",
+                params=params
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            history = data.get("history", [])
+            return [{"timestamp": h["t"], "price": h["p"]} for h in history]
+        except Exception as e:
+            print(f"Error fetching price history for {token_id}: {e}")
+            return []
+
+    async def get_order_book(self, token_id: str) -> Optional[dict]:
+        """
+        Fetch the full order book for a token from CLOB API.
+
+        Args:
+            token_id: The CLOB token ID
+
+        Returns:
+            Dict with 'bids' and 'asks' arrays, each containing {price, size} entries
+        """
+        try:
+            response = await self.client.get(
+                f"{self.clob_api_base}/book",
+                params={"token_id": token_id}
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            # Parse bids and asks
+            bids = []
+            asks = []
+
+            for bid in data.get("bids", []):
+                bids.append({
+                    "price": float(bid.get("price", 0)),
+                    "size": float(bid.get("size", 0))
+                })
+
+            for ask in data.get("asks", []):
+                asks.append({
+                    "price": float(ask.get("price", 0)),
+                    "size": float(ask.get("size", 0))
+                })
+
+            # Sort: bids descending by price, asks ascending by price
+            bids.sort(key=lambda x: x["price"], reverse=True)
+            asks.sort(key=lambda x: x["price"])
+
+            # Calculate best bid/ask and spread
+            best_bid = bids[0]["price"] if bids else 0
+            best_ask = asks[0]["price"] if asks else 1
+            spread = best_ask - best_bid if bids and asks else None
+
+            # Calculate total liquidity at top of book
+            bid_liquidity = sum(b["size"] for b in bids[:5]) if bids else 0
+            ask_liquidity = sum(a["size"] for a in asks[:5]) if asks else 0
+
+            return {
+                "token_id": token_id,
+                "bids": bids,
+                "asks": asks,
+                "best_bid": best_bid,
+                "best_ask": best_ask,
+                "spread": spread,
+                "bid_liquidity": bid_liquidity,
+                "ask_liquidity": ask_liquidity,
+                "mid_price": (best_bid + best_ask) / 2 if bids and asks else None
+            }
+        except Exception as e:
+            print(f"Error fetching order book for {token_id}: {e}")
+            return None
+
+    async def get_midpoint(self, token_id: str) -> Optional[float]:
+        """
+        Fetch the midpoint price for a token.
+        """
+        try:
+            response = await self.client.get(
+                f"{self.clob_api_base}/midpoint",
+                params={"token_id": token_id}
+            )
+            response.raise_for_status()
+            data = response.json()
+            return float(data.get("mid", 0))
+        except Exception as e:
+            print(f"Error fetching midpoint for {token_id}: {e}")
+            return None
+
+    async def get_spread(self, token_id: str) -> Optional[dict]:
+        """
+        Fetch current spread data (best bid/ask) for a token.
+        """
+        try:
+            response = await self.client.get(
+                f"{self.clob_api_base}/spread",
+                params={"token_id": token_id}
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            bid = float(data.get("bid", 0))
+            ask = float(data.get("ask", 0))
+
+            return {
+                "token_id": token_id,
+                "bid": bid,
+                "ask": ask,
+                "spread": ask - bid if bid and ask else None
+            }
+        except Exception as e:
+            print(f"Error fetching spread for {token_id}: {e}")
+            return None
+
+    async def get_markets_clob(self, next_cursor: str = None) -> dict:
+        """
+        Fetch markets from CLOB API with token IDs for order book queries.
+        Returns markets with their YES/NO token IDs.
+        """
+        try:
+            params = {}
+            if next_cursor:
+                params["next_cursor"] = next_cursor
+
+            response = await self.client.get(
+                f"{self.clob_api_base}/markets",
+                params=params
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            markets = []
+            for m in data.get("data", data) if isinstance(data, dict) else data:
+                tokens = m.get("tokens", [])
+                yes_token = None
+                no_token = None
+
+                for token in tokens:
+                    if token.get("outcome", "").upper() == "YES":
+                        yes_token = token.get("token_id")
+                    elif token.get("outcome", "").upper() == "NO":
+                        no_token = token.get("token_id")
+
+                markets.append({
+                    "condition_id": m.get("condition_id"),
+                    "question": m.get("question", ""),
+                    "market_slug": m.get("market_slug", ""),
+                    "yes_token_id": yes_token,
+                    "no_token_id": no_token,
+                    "active": m.get("active", False),
+                    "closed": m.get("closed", False),
+                    "volume": float(m.get("volume", 0) or 0),
+                    "liquidity": float(m.get("liquidity", 0) or 0),
+                })
+
+            return {
+                "markets": markets,
+                "next_cursor": data.get("next_cursor") if isinstance(data, dict) else None
+            }
+        except Exception as e:
+            print(f"Error fetching CLOB markets: {e}")
+            return {"markets": [], "next_cursor": None}
+
     async def close(self):
         await self.client.aclose()

@@ -72,7 +72,14 @@ class MarketWatchWorker:
         """Update or create a market from API data"""
         try:
             # Use conditionId as the primary market_id (matches trade records)
-            market_id = market_data.get("conditionId") or market_data.get("condition_id")
+            market_id = market_data.get("conditionId")
+
+            # Get parent event slug for valid Polymarket URLs
+            # The "slug" field is the condition slug (not valid for URLs)
+            # The parent event slug is in events[0]["slug"]
+            events = market_data.get("events", [])
+            market_slug = events[0]["slug"] if events else market_data.get("slug")
+
             if not market_id:
                 return
 
@@ -89,6 +96,7 @@ class MarketWatchWorker:
                 # Create new market
                 market = Market(
                     market_id=market_id,
+                    market_slug=market_slug,
                     condition_id=market_id,
                     question=question,
                     category=category,
@@ -101,6 +109,7 @@ class MarketWatchWorker:
                 # Update existing market
                 market.question = question
                 market.category = category
+                market.market_slug = market_slug  # Update slug in case it was wrong
                 market.is_resolved = market_data.get("closed", False)
                 market.end_date = self._parse_datetime(market_data.get("endDateIso") or market_data.get("end_date_iso"))
                 market.last_checked = datetime.utcnow()

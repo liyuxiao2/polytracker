@@ -3,14 +3,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, asc, and_
 from datetime import datetime, timedelta
 from typing import List, Optional
-from app.models.database import get_session, Trade, TraderProfile, Market
+from app.models.database import get_session, Trade, TraderProfile, Market, TrackedMarket, MarketSnapshot, PriceHistory
 from app.schemas.trader import (
     TraderProfileResponse,
     TraderListItem,
     TrendingTrade,
     DashboardStats,
     TradeResponse,
-    MarketWatchItem
+    MarketWatchItem,
+    TrackedMarketResponse,
+    TrackedMarketCreate,
+    MarketSnapshotResponse,
+    PriceHistoryResponse,
+    DiscoverMarketsRequest,
+    BackfillRequest
 )
 from app.services.insider_detector import InsiderDetector
 
@@ -385,18 +391,290 @@ async def get_market_watch(
 @router.get("/markets/{market_id}/trades", response_model=List[TradeResponse])
 async def get_market_trades(
     market_id: str,
-    limit: int = Query(50, le=500),
+    limit: int = Query(50, le=10000, description="Max trades to return (up to 10000 for all-time)"),
+    page: int = Query(1, ge=1, description="Page number for pagination"),
     session: AsyncSession = Depends(get_session)
 ):
     """
     Get trade history for a specific market.
+    Supports pagination for fetching all-time trade history.
     """
+    offset = (page - 1) * limit
+
     result = await session.execute(
         select(Trade)
         .where(Trade.market_id == market_id)
         .order_by(desc(Trade.timestamp))
+        .offset(offset)
         .limit(limit)
     )
     trades = result.scalars().all()
 
     return [TradeResponse.model_validate(trade) for trade in trades]
+
+
+@router.get("/markets/{market_id}/trades/count")
+async def get_market_trades_count(
+    market_id: str,
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Get total trade count for a market.
+    """
+    result = await session.execute(
+        select(func.count(Trade.id)).where(Trade.market_id == market_id)
+    )
+    count = result.scalar() or 0
+    return {"market_id": market_id, "total_trades": count}
+
+
+# ============== Backtesting Endpoints ==============
+
+@router.get("/backtesting/tracked-markets", response_model=List[TrackedMarketResponse])
+async def get_tracked_markets(
+    category: Optional[str] = Query(None),
+    active_only: bool = Query(True),
+    limit: int = Query(100, le=500),
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Get list of markets being tracked for backtesting snapshots.
+    """
+    query = select(TrackedMarket)
+
+    if active_only:
+        query = query.where(TrackedMarket.is_active == True)
+
+    if category:
+        query = query.where(TrackedMarket.category == category)
+
+    query = query.order_by(desc(TrackedMarket.liquidity)).limit(limit)
+
+    result = await session.execute(query)
+    markets = result.scalars().all()
+
+    return [TrackedMarketResponse.model_validate(m) for m in markets]
+
+
+@router.post("/backtesting/track-market", response_model=TrackedMarketResponse)
+async def add_tracked_market(
+    market: TrackedMarketCreate,
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Add a market to the tracking list for backtesting data collection.
+    """
+    from app.services.snapshot_worker import get_snapshot_worker
+
+    worker = await get_snapshot_worker()
+    tracked = await worker.add_tracked_market(
+        market_id=market.market_id,
+        question=market.question,
+        category=market.category,
+        yes_token_id=market.yes_token_id,
+        no_token_id=market.no_token_id,
+    )
+
+    return TrackedMarketResponse.model_validate(tracked)
+
+
+@router.post("/backtesting/discover-markets", response_model=List[TrackedMarketResponse])
+async def discover_markets(
+    request: DiscoverMarketsRequest,
+):
+    """
+    Auto-discover high-liquidity markets to track based on categories.
+    Categories: 'politics', 'sports', 'crypto'
+    """
+    from app.services.snapshot_worker import get_snapshot_worker
+
+    worker = await get_snapshot_worker()
+    discovered = await worker.auto_discover_markets(
+        categories=request.categories,
+        min_liquidity=request.min_liquidity,
+        min_volume=request.min_volume,
+        limit=request.limit,
+    )
+
+    return [TrackedMarketResponse.model_validate(m) for m in discovered]
+
+
+@router.delete("/backtesting/tracked-markets/{market_id}")
+async def remove_tracked_market(
+    market_id: str,
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Remove a market from tracking (sets is_active=False).
+    """
+    result = await session.execute(
+        select(TrackedMarket).where(TrackedMarket.market_id == market_id)
+    )
+    market = result.scalar_one_or_none()
+
+    if not market:
+        raise HTTPException(status_code=404, detail="Tracked market not found")
+
+    market.is_active = False
+    await session.commit()
+
+    return {"message": f"Market {market_id} removed from tracking"}
+
+
+@router.get("/backtesting/snapshots", response_model=List[MarketSnapshotResponse])
+async def get_market_snapshots(
+    market_id: str = Query(..., description="Market condition_id"),
+    start_time: Optional[datetime] = Query(None),
+    end_time: Optional[datetime] = Query(None),
+    limit: int = Query(1000, le=10000),
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Get order book snapshots for a market within a time range.
+    Used for backtesting spread analysis.
+    """
+    query = select(MarketSnapshot).where(MarketSnapshot.market_id == market_id)
+
+    if start_time:
+        query = query.where(MarketSnapshot.timestamp >= start_time)
+    if end_time:
+        query = query.where(MarketSnapshot.timestamp <= end_time)
+
+    query = query.order_by(MarketSnapshot.timestamp).limit(limit)
+
+    result = await session.execute(query)
+    snapshots = result.scalars().all()
+
+    return [MarketSnapshotResponse.model_validate(s) for s in snapshots]
+
+
+@router.get("/backtesting/price-history", response_model=List[PriceHistoryResponse])
+async def get_price_history(
+    market_id: str = Query(..., description="Market condition_id"),
+    outcome: Optional[str] = Query(None, description="YES or NO"),
+    start_time: Optional[datetime] = Query(None),
+    end_time: Optional[datetime] = Query(None),
+    interval: Optional[str] = Query(None, description="Filter by interval (1m, 5m, 1h, etc.)"),
+    limit: int = Query(5000, le=50000),
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Get historical price data for a market.
+    Used for backtesting price-based strategies.
+    """
+    query = select(PriceHistory).where(PriceHistory.market_id == market_id)
+
+    if outcome:
+        query = query.where(PriceHistory.outcome == outcome.upper())
+    if start_time:
+        query = query.where(PriceHistory.timestamp >= start_time)
+    if end_time:
+        query = query.where(PriceHistory.timestamp <= end_time)
+    if interval:
+        query = query.where(PriceHistory.interval == interval)
+
+    query = query.order_by(PriceHistory.timestamp).limit(limit)
+
+    result = await session.execute(query)
+    history = result.scalars().all()
+
+    return [PriceHistoryResponse.model_validate(h) for h in history]
+
+
+@router.post("/backtesting/backfill")
+async def backfill_price_history(
+    request: BackfillRequest,
+):
+    """
+    Backfill historical price data for a market from the CLOB API.
+    Fetches and stores price history for backtesting.
+    """
+    from app.services.snapshot_worker import get_snapshot_worker
+
+    worker = await get_snapshot_worker()
+    count = await worker.backfill_price_history(
+        market_id=request.market_id,
+        token_id=request.token_id,
+        outcome=request.outcome,
+        interval=request.interval,
+        fidelity=request.fidelity,
+        days_back=request.days_back,
+    )
+
+    return {
+        "message": f"Backfilled {count} price points",
+        "market_id": request.market_id,
+        "outcome": request.outcome,
+        "days_back": request.days_back,
+    }
+
+
+@router.post("/backfill/trades")
+async def backfill_trades(
+    max_pages: int = Query(100, le=500, description="Maximum pages to fetch (500 trades/page)"),
+    market_ids: Optional[List[str]] = Query(None, description="Optional list of market IDs to filter for"),
+):
+    """
+    Backfill historical trades from Polymarket API.
+    Paginates through trade history and stores all trades meeting minimum size requirements.
+    """
+    from app.services.data_worker import run_backfill
+
+    # Convert to set for faster lookup if provided
+    target_markets = set(market_ids) if market_ids else None
+
+    # Run backfill (this could take a while)
+    new_trades = await run_backfill(max_pages=max_pages)
+
+    return {
+        "message": f"Backfill complete",
+        "new_trades_ingested": new_trades,
+        "max_pages_requested": max_pages,
+    }
+
+
+@router.get("/backtesting/stats")
+async def get_backtesting_stats(
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Get statistics about backtesting data collection.
+    """
+    # Count tracked markets
+    tracked_result = await session.execute(
+        select(func.count(TrackedMarket.id)).where(TrackedMarket.is_active == True)
+    )
+    tracked_count = tracked_result.scalar() or 0
+
+    # Count total snapshots
+    snapshot_result = await session.execute(
+        select(func.count(MarketSnapshot.id))
+    )
+    snapshot_count = snapshot_result.scalar() or 0
+
+    # Count price history points
+    price_result = await session.execute(
+        select(func.count(PriceHistory.id))
+    )
+    price_count = price_result.scalar() or 0
+
+    # Get date range of data
+    oldest_snapshot = await session.execute(
+        select(func.min(MarketSnapshot.timestamp))
+    )
+    oldest_ts = oldest_snapshot.scalar()
+
+    newest_snapshot = await session.execute(
+        select(func.max(MarketSnapshot.timestamp))
+    )
+    newest_ts = newest_snapshot.scalar()
+
+    return {
+        "tracked_markets": tracked_count,
+        "total_snapshots": snapshot_count,
+        "total_price_points": price_count,
+        "data_range": {
+            "oldest": oldest_ts,
+            "newest": newest_ts,
+        }
+    }

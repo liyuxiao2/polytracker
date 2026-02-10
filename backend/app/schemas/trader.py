@@ -162,6 +162,7 @@ class MarketWatchItem(BaseModel):
     market_id: str
     question: str
     category: Optional[str] = None
+    market_slug: Optional[str] = None
     suspicious_trades_count: int = 0
     total_trades_count: int = 0
     total_volume: float = 0.0
@@ -177,3 +178,94 @@ class MarketWatchItem(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ============== Backtesting Schemas ==============
+
+class TrackedMarketResponse(BaseModel):
+    """Schema for tracked market response"""
+    id: int
+    market_id: str
+    question: Optional[str] = None
+    category: Optional[str] = None
+    yes_token_id: Optional[str] = None
+    no_token_id: Optional[str] = None
+    is_active: bool = True
+    snapshot_interval_seconds: int = 3
+    volume: float = 0.0
+    liquidity: float = 0.0
+    is_closed: bool = False
+    added_at: datetime
+    last_snapshot_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class TrackedMarketCreate(BaseModel):
+    """Schema for adding a market to track"""
+    market_id: str
+    question: Optional[str] = None
+    category: Optional[str] = None
+    yes_token_id: Optional[str] = None
+    no_token_id: Optional[str] = None
+
+
+class MarketSnapshotResponse(BaseModel):
+    """Schema for market snapshot response"""
+    id: int
+    timestamp: datetime
+    market_id: str
+    yes_token_id: Optional[str] = None
+    no_token_id: Optional[str] = None
+    # YES order book
+    yes_best_bid: Optional[float] = None
+    yes_best_ask: Optional[float] = None
+    yes_spread: Optional[float] = None
+    yes_bid_liquidity: Optional[float] = None
+    yes_ask_liquidity: Optional[float] = None
+    yes_mid_price: Optional[float] = None
+    # NO order book
+    no_best_bid: Optional[float] = None
+    no_best_ask: Optional[float] = None
+    no_spread: Optional[float] = None
+    no_bid_liquidity: Optional[float] = None
+    no_ask_liquidity: Optional[float] = None
+    no_mid_price: Optional[float] = None
+    # Totals
+    total_liquidity: Optional[float] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PriceHistoryResponse(BaseModel):
+    """Schema for price history response"""
+    id: int
+    timestamp: datetime
+    market_id: str
+    token_id: str
+    outcome: str
+    price: float
+    interval: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class DiscoverMarketsRequest(BaseModel):
+    """Schema for market discovery request"""
+    categories: Optional[list[str]] = None
+    min_liquidity: float = 10000
+    min_volume: float = 50000
+    limit: int = 50
+
+
+class BackfillRequest(BaseModel):
+    """Schema for backfill request"""
+    market_id: str
+    token_id: str
+    outcome: str
+    interval: str = "1h"
+    fidelity: int = 60
+    days_back: int = 30
