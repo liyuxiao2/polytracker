@@ -8,7 +8,10 @@ from app.services.data_worker import get_worker
 from app.services.resolution_worker import get_resolution_worker
 from app.services.market_watch_worker import get_market_watch_worker
 from app.services.snapshot_worker import get_snapshot_worker
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -17,10 +20,10 @@ async def lifespan(app: FastAPI):
     Startup and shutdown events for the FastAPI application.
     """
     # Startup
-    print("[App] Initializing database...")
+    logger.info("[App] Initializing database...")
     await init_db()
 
-    print("[App] Starting background workers...")
+    logger.info("[App] Starting background workers...")
     worker = await get_worker()
     worker_task = asyncio.create_task(worker.start())
 
@@ -34,7 +37,7 @@ async def lifespan(app: FastAPI):
     snapshot_worker = None
     snapshot_task = None
     if os.getenv("ENABLE_SNAPSHOT_WORKER", "false").lower() == "true":
-        print("[App] Starting snapshot worker for backtesting data...")
+        logger.info("[App] Starting snapshot worker for backtesting data...")
         snapshot_worker = await get_snapshot_worker()
 
         # Auto-discover high-liquidity markets on startup
@@ -42,7 +45,7 @@ async def lifespan(app: FastAPI):
         max_markets = int(os.getenv("AUTO_DISCOVER_MAX_MARKETS", "4"))
         backfill_days = int(os.getenv("BACKFILL_MAX_DAYS", "365"))
 
-        print(f"[App] Auto-discovering up to {max_markets} high-liquidity markets (min ${min_liquidity:,.0f})...")
+        logger.info(f"[App] Auto-discovering up to {max_markets} high-liquidity markets (min ${min_liquidity:,.0f})...")
         discovered = await snapshot_worker.auto_discover_markets(
             min_liquidity=min_liquidity,
             min_volume=100000,
@@ -51,7 +54,7 @@ async def lifespan(app: FastAPI):
 
         # Backfill historical data for discovered markets (run in background)
         if discovered:
-            print(f"[App] Starting backfill for {len(discovered)} markets ({backfill_days} days)...")
+            logger.info(f"[App] Starting backfill for {len(discovered)} markets ({backfill_days} days)...")
             for market in discovered:
                 if market.yes_token_id:
                     asyncio.create_task(snapshot_worker.backfill_price_history(
@@ -77,7 +80,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
-    print("[App] Shutting down background workers...")
+    logger.info("[App] Shutting down background workers...")
     worker = await get_worker()
     await worker.stop()
     worker_task.cancel()
@@ -105,9 +108,13 @@ app = FastAPI(
 )
 
 # CORS middleware for frontend
+cors_origins = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000"
+).split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -36,3 +36,6 @@ out/
 # OS
 .DS_Store
 Thumbs.db
+
+# Security - never commit key scripts
+script.py

@@ -21,7 +21,6 @@ class InsiderDetector:
     7. Off-hours trading (> 50% of trades during 2-6 AM UTC)
     8. Longshot win rate (winning at < 10% odds)
     9. Large bet win rate (winning on 4x+ average positions)
-    9. Large bet win rate (winning on 4x+ average positions)
     10. ROI and Profit Factor (Consistent profitability)
     """
 
@@ -435,8 +434,6 @@ class InsiderDetector:
             "off_hours_trade_pct": off_hours_trade_pct,
             "days_since_last_trade": days_since_last_trade,
             "avg_entry_price": avg_entry_price,
-            "longshot_win_rate": longshot_win_rate,
-            "large_bet_win_rate": large_bet_win_rate,
             "longshot_win_rate": longshot_win_rate,
             "large_bet_win_rate": large_bet_win_rate,
             "roi": self._calculate_roi(total_pnl, total_volume),

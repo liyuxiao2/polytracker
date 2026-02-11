@@ -33,25 +33,30 @@ async def get_flagged_traders(
     """
     Get list of flagged traders sorted by insider score.
     """
+    # Single query: join profiles with their last trade time (fixes N+1)
+    last_trade_subq = (
+        select(
+            Trade.wallet_address,
+            func.max(Trade.timestamp).label("last_trade_time")
+        )
+        .group_by(Trade.wallet_address)
+        .subquery()
+    )
+
     result = await session.execute(
-        select(TraderProfile)
+        select(TraderProfile, last_trade_subq.c.last_trade_time)
+        .outerjoin(
+            last_trade_subq,
+            TraderProfile.wallet_address == last_trade_subq.c.wallet_address
+        )
         .where(TraderProfile.insider_score >= min_score)
         .order_by(desc(TraderProfile.insider_score))
         .limit(limit)
     )
-    profiles = result.scalars().all()
+    rows = result.all()
 
-    # Get last trade time for each trader
     traders_list = []
-    for profile in profiles:
-        last_trade_result = await session.execute(
-            select(Trade.timestamp)
-            .where(Trade.wallet_address == profile.wallet_address)
-            .order_by(desc(Trade.timestamp))
-            .limit(1)
-        )
-        last_trade = last_trade_result.scalar_one_or_none()
-
+    for profile, last_trade_time in rows:
         traders_list.append(TraderListItem(
             wallet_address=profile.wallet_address,
             insider_score=profile.insider_score,
@@ -61,7 +66,7 @@ async def get_flagged_traders(
             total_pnl=profile.total_pnl,
             flagged_trades_count=profile.flagged_trades_count,
             flagged_wins_count=profile.flagged_wins_count,
-            last_trade_time=last_trade
+            last_trade_time=last_trade_time
         ))
 
     return traders_list
@@ -181,7 +186,6 @@ async def get_trader_profile(
         profile = result.scalar_one_or_none()
 
     if not profile:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Trader not found")
 
     return TraderProfileResponse.model_validate(profile)

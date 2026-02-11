@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { MarketWatchItem, Trade } from "@/lib/types";
 import { api } from "@/lib/api";
 import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
+import { getScoreColor } from "@/lib/utils";
 
 const CATEGORIES = [
   "All",
@@ -88,12 +89,6 @@ export default function MarketWatch() {
   const formatPercent = (value: number | undefined) => {
     if (value === undefined || value === null) return "N/A";
     return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
-  };
-
-  const getScoreColor = (score: number) => {
-    if (score >= 70) return "text-red-400";
-    if (score >= 40) return "text-orange-400";
-    return "text-yellow-400";
   };
 
   const getCategoryColor = (category: string | undefined) => {

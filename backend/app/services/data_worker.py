@@ -1,14 +1,12 @@
 import asyncio
+import os
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.database import Trade, async_session_maker
 from app.services.polymarket_client import PolymarketClient
 from app.services.insider_detector import InsiderDetector
-from typing import List, Dict, Any
-import os
-import asyncio
 
 
 class DataIngestionWorker:

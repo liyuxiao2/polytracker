@@ -1,6 +1,9 @@
 import httpx
+import logging
 import os
 from typing import List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class PolymarketClient:
@@ -40,7 +43,7 @@ class PolymarketClient:
                 })
             return result
         except Exception as e:
-            print(f"Error fetching trades: {e}")
+            logger.error(f"Error fetching trades: {e}")
             return []
 
     async def get_market_info(self, market_id: str) -> Optional[dict]:
@@ -81,10 +84,10 @@ class PolymarketClient:
             if e.response.status_code == 404:
                 # Market not found - try fallback to Gamma API for older markets
                 return await self._get_market_info_gamma(market_id)
-            print(f"Error fetching market info for {market_id}: {e}")
+            logger.error(f"Error fetching market info for {market_id}: {e}")
             return None
         except Exception as e:
-            print(f"Error fetching market info for {market_id}: {e}")
+            logger.error(f"Error fetching market info for {market_id}: {e}")
             return None
 
     async def _get_market_info_gamma(self, market_id: str) -> Optional[dict]:
@@ -112,7 +115,7 @@ class PolymarketClient:
                 }
             return None
         except Exception as e:
-            print(f"Error fetching market info from Gamma API for {market_id}: {e}")
+            logger.error(f"Error fetching market info from Gamma API for {market_id}: {e}")
             return None
 
     async def get_markets_list(self, limit: int = 100, offset: int = 0, closed: bool = False) -> List[dict]:
@@ -137,7 +140,7 @@ class PolymarketClient:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            print(f"Error fetching markets list: {e}")
+            logger.error(f"Error fetching markets list: {e}")
             return []
 
     async def get_resolved_markets(self, limit: int = 100, offset: int = 0) -> List[dict]:
@@ -152,7 +155,7 @@ class PolymarketClient:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            print(f"Error fetching resolved markets: {e}")
+            logger.error(f"Error fetching resolved markets: {e}")
             return []
 
     async def get_user_activity(self, wallet_address: str, limit: int = 100) -> List[dict]:
@@ -167,7 +170,7 @@ class PolymarketClient:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            print(f"Error fetching user activity: {e}")
+            logger.error(f"Error fetching user activity: {e}")
             return []
 
     async def get_historical_trades(self, before_timestamp: int = None, limit: int = 500) -> List[dict]:
@@ -204,7 +207,7 @@ class PolymarketClient:
                 })
             return result
         except Exception as e:
-            print(f"Error fetching historical trades: {e}")
+            logger.error(f"Error fetching historical trades: {e}")
             return []
 
     async def get_price_history(
@@ -250,7 +253,7 @@ class PolymarketClient:
             history = data.get("history", [])
             return [{"timestamp": h["t"], "price": h["p"]} for h in history]
         except Exception as e:
-            print(f"Error fetching price history for {token_id}: {e}")
+            logger.error(f"Error fetching price history for {token_id}: {e}")
             return []
 
     async def get_order_book(self, token_id: str) -> Optional[dict]:
@@ -312,7 +315,7 @@ class PolymarketClient:
                 "mid_price": (best_bid + best_ask) / 2 if bids and asks else None
             }
         except Exception as e:
-            print(f"Error fetching order book for {token_id}: {e}")
+            logger.error(f"Error fetching order book for {token_id}: {e}")
             return None
 
     async def get_midpoint(self, token_id: str) -> Optional[float]:
@@ -328,7 +331,7 @@ class PolymarketClient:
             data = response.json()
             return float(data.get("mid", 0))
         except Exception as e:
-            print(f"Error fetching midpoint for {token_id}: {e}")
+            logger.error(f"Error fetching midpoint for {token_id}: {e}")
             return None
 
     async def get_spread(self, token_id: str) -> Optional[dict]:
@@ -353,7 +356,7 @@ class PolymarketClient:
                 "spread": ask - bid if bid and ask else None
             }
         except Exception as e:
-            print(f"Error fetching spread for {token_id}: {e}")
+            logger.error(f"Error fetching spread for {token_id}: {e}")
             return None
 
     async def get_markets_clob(self, next_cursor: str = None) -> dict:
@@ -402,7 +405,7 @@ class PolymarketClient:
                 "next_cursor": data.get("next_cursor") if isinstance(data, dict) else None
             }
         except Exception as e:
-            print(f"Error fetching CLOB markets: {e}")
+            logger.error(f"Error fetching CLOB markets: {e}")
             return {"markets": [], "next_cursor": None}
 
     async def close(self):
