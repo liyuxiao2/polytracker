@@ -1,14 +1,15 @@
 import asyncio
+import logging
+import os
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.database import Trade, async_session_maker
 from app.services.polymarket_client import PolymarketClient
 from app.services.insider_detector import InsiderDetector
-from typing import List, Dict, Any
-import os
-import asyncio
+
+logger = logging.getLogger(__name__)
 
 
 class DataIngestionWorker:
@@ -16,7 +17,8 @@ class DataIngestionWorker:
         self.client = PolymarketClient()
         self.detector = InsiderDetector()
         self.poll_interval = int(os.getenv("POLL_INTERVAL_SECONDS", "10"))
-        self.min_trade_size = float(os.getenv("MIN_TRADE_SIZE_USD", "50"))
+        self.min_trade_size = float(os.getenv("MIN_TRADE_SIZE_USD", "0"))  # Default 0 = no filter
+        self.trade_fetch_limit = int(os.getenv("TRADE_FETCH_LIMIT", "1000"))
         self.is_running = False
 
     async def start(self):
@@ -24,14 +26,14 @@ class DataIngestionWorker:
         Start the background worker that continuously polls Polymarket API.
         """
         self.is_running = True
-        print(f"[Worker] Starting data ingestion worker (poll interval: {self.poll_interval}s)")
+        logger.info(f"[Worker] Starting data ingestion worker (poll interval: {self.poll_interval}s)")
 
         while self.is_running:
             try:
                 await self._process_trades()
                 await asyncio.sleep(self.poll_interval)
             except Exception as e:
-                print(f"[Worker] Error in ingestion loop: {e}")
+                logger.error(f"[Worker] Error in ingestion loop: {e}")
                 await asyncio.sleep(5)  # Brief pause on error
 
     async def stop(self):
@@ -40,7 +42,7 @@ class DataIngestionWorker:
         """
         self.is_running = False
         await self.client.close()
-        print("[Worker] Data ingestion worker stopped")
+        logger.info("[Worker] Data ingestion worker stopped")
 
     async def _process_trades(self):
         """
@@ -50,7 +52,7 @@ class DataIngestionWorker:
         start_time = time.time()
 
         async with async_session_maker() as session:
-            trades = await self.client.get_recent_trades(limit=1000)
+            trades = await self.client.get_recent_trades(limit=self.trade_fetch_limit)
             fetch_time = time.time() - start_time
 
             new_trades = 0
@@ -66,7 +68,7 @@ class DataIngestionWorker:
             await session.commit()
             total_time = time.time() - start_time
             if new_trades > 0:
-                print(f"[Worker] Ingested {new_trades} new trades ({flagged_trades} flagged) [fetch: {fetch_time:.1f}s, total: {total_time:.1f}s]")
+                logger.info(f"[Worker] Ingested {new_trades} new trades ({flagged_trades} flagged) [fetch: {fetch_time:.1f}s, total: {total_time:.1f}s]")
 
     async def _process_single_trade(self, trade_data: dict, session: AsyncSession) -> Optional[Trade]:
         """
@@ -77,8 +79,8 @@ class DataIngestionWorker:
             wallet_address = trade_data.get("maker_address", "")
             trade_size_usd = float(trade_data.get("size", 0))
 
-            # Filter out bot trades / small trades
-            if trade_size_usd < self.min_trade_size:
+            # Filter out bot trades / small trades (disabled by default, set MIN_TRADE_SIZE_USD to enable)
+            if self.min_trade_size > 0 and trade_size_usd < self.min_trade_size:
                 return None
 
             # Get transaction hash for deduplication (primary method)
@@ -163,14 +165,14 @@ class DataIngestionWorker:
             return trade
 
         except Exception as e:
-            print(f"[Worker] Error processing trade: {e}")
+            logger.error(f"[Worker] Error processing trade: {e}")
             return None
 
     async def _backfill_trader_history(self, wallet_address: str):
         """
         Fetch historical trades for a wallet to populate profile stats immediately.
         """
-        print(f"[Worker] Backfilling history for {wallet_address}...")
+        logger.info(f"[Worker] Backfilling history for {wallet_address}...")
         try:
             # Polymarket API returns recent activity
             activity = await self.client.get_user_activity(wallet_address, limit=500)
@@ -203,7 +205,7 @@ class DataIngestionWorker:
                     price = float(item.get("price", 0))
                     size = float(item.get("usdcSize", 0))
                     
-                    if size < self.min_trade_size:
+                    if self.min_trade_size > 0 and size < self.min_trade_size:
                         continue
                         
                     timestamp = datetime.fromtimestamp(int(item.get("timestamp", 0)))
@@ -229,12 +231,102 @@ class DataIngestionWorker:
                 
                 await session.commit()
                 if count > 0:
-                    print(f"[Worker] Backfilled {count} trades for {wallet_address}")
+                    logger.info(f"[Worker] Backfilled {count} trades for {wallet_address}")
                     # Update profile again with full history
                     await self.detector.update_trader_profile(wallet_address, session)
                     
         except Exception as e:
-            print(f"[Worker] Error backfilling {wallet_address}: {e}")
+            logger.error(f"[Worker] Error backfilling {wallet_address}: {e}")
+
+
+    async def backfill_historical_trades(
+        self,
+        max_pages: int = 100,
+        target_market_ids: set = None,
+        days_back: int = None,
+        stop_on_duplicates: bool = True
+    ):
+        """
+        Backfill historical trades by paginating through the API.
+
+        Args:
+            max_pages: Maximum number of pages to fetch (each page ~500 trades)
+            target_market_ids: Optional set of market IDs to filter for. If None, fetches all.
+            days_back: Optional - keep going until we reach this many days in the past
+            stop_on_duplicates: If False, keep going even when finding duplicates (for deep backfill)
+        """
+        logger.info(f"[Backfill] Starting historical trade backfill (max {max_pages} pages, days_back={days_back})...")
+
+        if days_back:
+            cutoff_date = datetime.utcnow() - timedelta(days=days_back)
+            logger.info(f"[Backfill] Will fetch back to {cutoff_date.strftime('%Y-%m-%d')}")
+
+        total_new = 0
+        total_skipped = 0
+        pages_fetched = 0
+        oldest_timestamp = None
+        consecutive_empty_pages = 0
+
+        async with async_session_maker() as session:
+            for page in range(max_pages):
+                # Fetch trades, using oldest timestamp for pagination
+                trades = await self.client.get_historical_trades(
+                    before_timestamp=oldest_timestamp,
+                    limit=500
+                )
+
+                if not trades:
+                    logger.info(f"[Backfill] No more trades found after {pages_fetched} pages")
+                    break
+
+                pages_fetched += 1
+                page_new = 0
+
+                for trade_data in trades:
+                    # Filter by market if target_market_ids specified
+                    if target_market_ids:
+                        market_id = trade_data.get("market", "")
+                        if market_id not in target_market_ids:
+                            continue
+
+                    # Process the trade (will skip if already exists)
+                    result = await self._process_single_trade(trade_data, session)
+                    if result:
+                        page_new += 1
+                        total_new += 1
+                    else:
+                        total_skipped += 1
+
+                # Get oldest timestamp for next page
+                if trades:
+                    oldest_timestamp = min(t.get("timestamp", 0) for t in trades)
+                    oldest_date = datetime.fromtimestamp(oldest_timestamp / 1000)
+                    logger.info(f"[Backfill] Page {pages_fetched}: {page_new} new trades (oldest: {oldest_date.strftime('%Y-%m-%d %H:%M')})")
+
+                    # Check if we've gone back far enough
+                    if days_back and oldest_date < cutoff_date:
+                        logger.info(f"[Backfill] Reached target date {cutoff_date.strftime('%Y-%m-%d')}, stopping")
+                        break
+
+                # Commit every page to avoid memory issues
+                await session.commit()
+
+                # Small delay to avoid rate limiting
+                await asyncio.sleep(0.3)
+
+                # Track consecutive empty pages
+                if page_new == 0:
+                    consecutive_empty_pages += 1
+                else:
+                    consecutive_empty_pages = 0
+
+                # Stop logic based on settings
+                if stop_on_duplicates and consecutive_empty_pages >= 3:
+                    logger.info(f"[Backfill] {consecutive_empty_pages} consecutive pages with no new trades, stopping")
+                    break
+
+        logger.info(f"[Backfill] Complete: {total_new} new trades, {total_skipped} skipped, {pages_fetched} pages")
+        return total_new
 
 
 # Global worker instance
@@ -246,3 +338,13 @@ async def get_worker() -> DataIngestionWorker:
     if worker_instance is None:
         worker_instance = DataIngestionWorker()
     return worker_instance
+
+
+async def run_backfill(max_pages: int = 100, days_back: int = None, stop_on_duplicates: bool = True):
+    """Standalone function to run historical backfill"""
+    worker = await get_worker()
+    return await worker.backfill_historical_trades(
+        max_pages=max_pages,
+        days_back=days_back,
+        stop_on_duplicates=stop_on_duplicates
+    )

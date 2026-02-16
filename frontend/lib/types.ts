@@ -87,6 +87,7 @@ export interface DashboardStats {
 }
 
 export interface MarketWatchItem {
+  market_slug: string;
   market_id: string;
   question: string;
   category?: string;

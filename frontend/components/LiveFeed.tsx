@@ -234,7 +234,7 @@ export default function LiveFeed({
                   </p>
                 )}
                 <p className="text-xs text-slate-400 mt-1">
-                  Z-Score: {trade.z_score.toFixed(2)}
+                  Z-Score: {trade.z_score?.toFixed(2) ?? "N/A"}
                   {trade.price && ` @ ${(trade.price * 100).toFixed(0)}%`}
                 </p>
               </div>
