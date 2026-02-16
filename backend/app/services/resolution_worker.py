@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,6 +7,8 @@ from sqlalchemy import select, update
 from app.models.database import Trade, TraderProfile, async_session_maker
 from app.services.polymarket_client import PolymarketClient
 import os
+
+logger = logging.getLogger(__name__)
 
 
 class TradeResolutionWorker:
@@ -26,14 +29,14 @@ class TradeResolutionWorker:
         Start the background worker that checks trade resolutions.
         """
         self.is_running = True
-        print(f"[ResolutionWorker] Starting trade resolution worker (poll interval: {self.poll_interval}s)")
+        logger.info(f"[ResolutionWorker] Starting trade resolution worker (poll interval: {self.poll_interval}s)")
 
         while self.is_running:
             try:
                 await self._check_resolutions()
                 await asyncio.sleep(self.poll_interval)
             except Exception as e:
-                print(f"[ResolutionWorker] Error in resolution loop: {e}")
+                logger.error(f"[ResolutionWorker] Error in resolution loop: {e}")
                 await asyncio.sleep(30)  # Brief pause on error
 
     async def stop(self):
@@ -42,7 +45,7 @@ class TradeResolutionWorker:
         """
         self.is_running = False
         await self.client.close()
-        print("[ResolutionWorker] Trade resolution worker stopped")
+        logger.info("[ResolutionWorker] Trade resolution worker stopped")
 
     async def _check_resolutions(self):
         """
@@ -65,10 +68,10 @@ class TradeResolutionWorker:
             unresolved_trades = result.scalars().all()
 
             if not unresolved_trades:
-                print("[ResolutionWorker] No unresolved trades to check")
+                logger.info("[ResolutionWorker] No unresolved trades to check")
                 return
 
-            print(f"[ResolutionWorker] Checking {len(unresolved_trades)} unresolved trades")
+            logger.info(f"[ResolutionWorker] Checking {len(unresolved_trades)} unresolved trades")
 
             # Group trades by market_id to minimize API calls
             trades_by_market: Dict[str, List[Trade]] = {}
@@ -115,7 +118,7 @@ class TradeResolutionWorker:
                         await self._update_trader_stats(session, trade.wallet_address, is_win, pnl, trade.is_flagged)
 
             await session.commit()
-            print(f"[ResolutionWorker] Resolved {resolved_count} trades")
+            logger.info(f"[ResolutionWorker] Resolved {resolved_count} trades")
 
     async def _update_unrealized_pnl(self):
         """
@@ -135,10 +138,10 @@ class TradeResolutionWorker:
             open_trades = result.scalars().all()
 
             if not open_trades:
-                print("[ResolutionWorker] No open positions to update")
+                logger.info("[ResolutionWorker] No open positions to update")
                 return
 
-            print(f"[ResolutionWorker] Updating unrealized P&L for {len(open_trades)} open positions")
+            logger.info(f"[ResolutionWorker] Updating unrealized P&L for {len(open_trades)} open positions")
 
             # Group by market_id to minimize API calls
             trades_by_market: Dict[str, List[Trade]] = {}
@@ -193,7 +196,7 @@ class TradeResolutionWorker:
                     updated_count += 1
 
             await session.commit()
-            print(f"[ResolutionWorker] Updated unrealized P&L for {updated_count} positions")
+            logger.info(f"[ResolutionWorker] Updated unrealized P&L for {updated_count} positions")
 
             # Update trader profile aggregates
             await self._update_trader_unrealized_stats(session)
@@ -253,10 +256,16 @@ class TradeResolutionWorker:
     async def _get_market_info_cached(self, market_id: str) -> Optional[dict]:
         """
         Get market info with caching to reduce API calls.
+        Resolved markets are cached permanently (they never un-resolve).
         """
         cached = self._market_cache.get(market_id)
-        if cached and cached.get("_cached_at", 0) > datetime.utcnow().timestamp() - self._cache_ttl:
-            return cached
+        if cached:
+            # Resolved markets are cached forever
+            if cached.get("resolved"):
+                return cached
+            # Unresolved markets use TTL
+            if cached.get("_cached_at", 0) > datetime.utcnow().timestamp() - self._cache_ttl:
+                return cached
 
         market_info = await self.client.get_market_info(market_id)
         if market_info:
@@ -325,6 +334,96 @@ class TradeResolutionWorker:
             profile.win_rate = (profile.winning_trades / profile.resolved_trades) * 100
 
         profile.last_updated = datetime.utcnow()
+
+
+    async def bulk_resolve_all(self, concurrency: int = 10) -> dict:
+        """
+        One-shot bulk resolution: fetch all distinct unresolved market IDs,
+        look up each via CLOB API, and resolve matching trades.
+
+        Uses a semaphore to limit concurrent API calls.
+
+        Returns stats dict with counts.
+        """
+        import asyncio as _asyncio
+
+        sem = _asyncio.Semaphore(concurrency)
+        stats = {"markets_checked": 0, "markets_resolved": 0, "trades_resolved": 0, "errors": 0}
+
+        async with async_session_maker() as session:
+            # Get all distinct market IDs with unresolved trades
+            result = await session.execute(
+                select(Trade.market_id)
+                .where(Trade.is_win.is_(None))
+                .distinct()
+            )
+            unresolved_market_ids = [row[0] for row in result.all()]
+            logger.info(f"[BulkResolve] Found {len(unresolved_market_ids)} markets with unresolved trades")
+
+        # Look up each market's resolution status (with concurrency limit)
+        resolved_markets: Dict[str, str] = {}  # market_id -> resolved_outcome
+
+        async def check_market(market_id: str):
+            async with sem:
+                try:
+                    info = await self._get_market_info_cached(market_id)
+                    stats["markets_checked"] += 1
+                    if info and info.get("resolved") and info.get("resolved_outcome"):
+                        resolved_markets[market_id] = info["resolved_outcome"]
+                        stats["markets_resolved"] += 1
+                except Exception as e:
+                    stats["errors"] += 1
+                    if stats["errors"] <= 5:
+                        logger.error(f"[BulkResolve] Error checking {market_id}: {e}")
+
+        # Run all lookups concurrently (bounded by semaphore)
+        tasks = [check_market(mid) for mid in unresolved_market_ids]
+        # Process in chunks to log progress
+        chunk_size = 200
+        for i in range(0, len(tasks), chunk_size):
+            chunk = tasks[i:i + chunk_size]
+            await _asyncio.gather(*chunk)
+            logger.info(
+                f"[BulkResolve] Progress: {min(i + chunk_size, len(tasks))}/{len(tasks)} markets checked, "
+                f"{stats['markets_resolved']} resolved"
+            )
+
+        logger.info(f"[BulkResolve] {stats['markets_resolved']} markets resolved out of {stats['markets_checked']} checked")
+
+        if not resolved_markets:
+            return stats
+
+        # Now resolve trades in DB, processing one market at a time
+        async with async_session_maker() as session:
+            for market_id, resolved_outcome in resolved_markets.items():
+                result = await session.execute(
+                    select(Trade)
+                    .where(Trade.market_id == market_id)
+                    .where(Trade.is_win.is_(None))
+                )
+                trades = result.scalars().all()
+
+                resolution_time = datetime.utcnow()
+                for trade in trades:
+                    is_win = self._determine_win(trade, resolved_outcome)
+                    pnl = self._calculate_pnl(trade, is_win)
+                    hours_before = (resolution_time - trade.timestamp).total_seconds() / 3600
+
+                    trade.is_resolved = True
+                    trade.resolved_outcome = resolved_outcome
+                    trade.is_win = is_win
+                    trade.pnl_usd = pnl
+                    trade.hours_before_resolution = hours_before
+                    trade.unrealized_pnl_usd = None
+                    trade.current_position_value_usd = None
+                    trade.last_pnl_update = None
+
+                    stats["trades_resolved"] += 1
+
+            await session.commit()
+
+        logger.info(f"[BulkResolve] Resolved {stats['trades_resolved']} trades total")
+        return stats
 
 
 # Global worker instance

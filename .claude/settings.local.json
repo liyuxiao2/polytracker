@@ -14,7 +14,9 @@
       "Bash(xargs kill -9)",
       "Bash(source venv/bin/activate)",
       "Bash(/usr/local/bin/docker compose:*)",
-      "Bash(# Check if there''s a trades-by-market endpoint curl -s \"\"https://gamma-api.polymarket.com/trades?market=0xbb57ccf5853a85487bc3d83d04d669310d28c6c810758953b9d9b91d1aee89d2&limit=10\"\")"
+      "Bash(# Check if there''s a trades-by-market endpoint curl -s \"\"https://gamma-api.polymarket.com/trades?market=0xbb57ccf5853a85487bc3d83d04d669310d28c6c810758953b9d9b91d1aee89d2&limit=10\"\")",
+      "Bash(pip install:*)",
+      "Bash(npm run build:*)"
     ]
   }
 }

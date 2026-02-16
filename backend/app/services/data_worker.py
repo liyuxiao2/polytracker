@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 from datetime import datetime
 from typing import Optional, List
@@ -7,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.database import Trade, async_session_maker
 from app.services.polymarket_client import PolymarketClient
 from app.services.insider_detector import InsiderDetector
+
+logger = logging.getLogger(__name__)
 
 
 class DataIngestionWorker:
@@ -23,14 +26,14 @@ class DataIngestionWorker:
         Start the background worker that continuously polls Polymarket API.
         """
         self.is_running = True
-        print(f"[Worker] Starting data ingestion worker (poll interval: {self.poll_interval}s)")
+        logger.info(f"[Worker] Starting data ingestion worker (poll interval: {self.poll_interval}s)")
 
         while self.is_running:
             try:
                 await self._process_trades()
                 await asyncio.sleep(self.poll_interval)
             except Exception as e:
-                print(f"[Worker] Error in ingestion loop: {e}")
+                logger.error(f"[Worker] Error in ingestion loop: {e}")
                 await asyncio.sleep(5)  # Brief pause on error
 
     async def stop(self):
@@ -39,7 +42,7 @@ class DataIngestionWorker:
         """
         self.is_running = False
         await self.client.close()
-        print("[Worker] Data ingestion worker stopped")
+        logger.info("[Worker] Data ingestion worker stopped")
 
     async def _process_trades(self):
         """
@@ -65,7 +68,7 @@ class DataIngestionWorker:
             await session.commit()
             total_time = time.time() - start_time
             if new_trades > 0:
-                print(f"[Worker] Ingested {new_trades} new trades ({flagged_trades} flagged) [fetch: {fetch_time:.1f}s, total: {total_time:.1f}s]")
+                logger.info(f"[Worker] Ingested {new_trades} new trades ({flagged_trades} flagged) [fetch: {fetch_time:.1f}s, total: {total_time:.1f}s]")
 
     async def _process_single_trade(self, trade_data: dict, session: AsyncSession) -> Optional[Trade]:
         """
@@ -162,14 +165,14 @@ class DataIngestionWorker:
             return trade
 
         except Exception as e:
-            print(f"[Worker] Error processing trade: {e}")
+            logger.error(f"[Worker] Error processing trade: {e}")
             return None
 
     async def _backfill_trader_history(self, wallet_address: str):
         """
         Fetch historical trades for a wallet to populate profile stats immediately.
         """
-        print(f"[Worker] Backfilling history for {wallet_address}...")
+        logger.info(f"[Worker] Backfilling history for {wallet_address}...")
         try:
             # Polymarket API returns recent activity
             activity = await self.client.get_user_activity(wallet_address, limit=500)
@@ -228,12 +231,12 @@ class DataIngestionWorker:
                 
                 await session.commit()
                 if count > 0:
-                    print(f"[Worker] Backfilled {count} trades for {wallet_address}")
+                    logger.info(f"[Worker] Backfilled {count} trades for {wallet_address}")
                     # Update profile again with full history
                     await self.detector.update_trader_profile(wallet_address, session)
                     
         except Exception as e:
-            print(f"[Worker] Error backfilling {wallet_address}: {e}")
+            logger.error(f"[Worker] Error backfilling {wallet_address}: {e}")
 
 
     async def backfill_historical_trades(
@@ -252,11 +255,11 @@ class DataIngestionWorker:
             days_back: Optional - keep going until we reach this many days in the past
             stop_on_duplicates: If False, keep going even when finding duplicates (for deep backfill)
         """
-        print(f"[Backfill] Starting historical trade backfill (max {max_pages} pages, days_back={days_back})...")
+        logger.info(f"[Backfill] Starting historical trade backfill (max {max_pages} pages, days_back={days_back})...")
 
         if days_back:
             cutoff_date = datetime.utcnow() - timedelta(days=days_back)
-            print(f"[Backfill] Will fetch back to {cutoff_date.strftime('%Y-%m-%d')}")
+            logger.info(f"[Backfill] Will fetch back to {cutoff_date.strftime('%Y-%m-%d')}")
 
         total_new = 0
         total_skipped = 0
@@ -273,7 +276,7 @@ class DataIngestionWorker:
                 )
 
                 if not trades:
-                    print(f"[Backfill] No more trades found after {pages_fetched} pages")
+                    logger.info(f"[Backfill] No more trades found after {pages_fetched} pages")
                     break
 
                 pages_fetched += 1
@@ -298,11 +301,11 @@ class DataIngestionWorker:
                 if trades:
                     oldest_timestamp = min(t.get("timestamp", 0) for t in trades)
                     oldest_date = datetime.fromtimestamp(oldest_timestamp / 1000)
-                    print(f"[Backfill] Page {pages_fetched}: {page_new} new trades (oldest: {oldest_date.strftime('%Y-%m-%d %H:%M')})")
+                    logger.info(f"[Backfill] Page {pages_fetched}: {page_new} new trades (oldest: {oldest_date.strftime('%Y-%m-%d %H:%M')})")
 
                     # Check if we've gone back far enough
                     if days_back and oldest_date < cutoff_date:
-                        print(f"[Backfill] Reached target date {cutoff_date.strftime('%Y-%m-%d')}, stopping")
+                        logger.info(f"[Backfill] Reached target date {cutoff_date.strftime('%Y-%m-%d')}, stopping")
                         break
 
                 # Commit every page to avoid memory issues
@@ -319,10 +322,10 @@ class DataIngestionWorker:
 
                 # Stop logic based on settings
                 if stop_on_duplicates and consecutive_empty_pages >= 3:
-                    print(f"[Backfill] {consecutive_empty_pages} consecutive pages with no new trades, stopping")
+                    logger.info(f"[Backfill] {consecutive_empty_pages} consecutive pages with no new trades, stopping")
                     break
 
-        print(f"[Backfill] Complete: {total_new} new trades, {total_skipped} skipped, {pages_fetched} pages")
+        logger.info(f"[Backfill] Complete: {total_new} new trades, {total_skipped} skipped, {pages_fetched} pages")
         return total_new
 
 

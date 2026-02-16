@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, asc, and_
 from datetime import datetime, timedelta
 from typing import List, Optional
-from app.models.database import get_session, Trade, TraderProfile, Market, TrackedMarket, MarketSnapshot, PriceHistory
+from app.models.database import get_session, async_session_maker, Trade, TraderProfile, Market, TrackedMarket, MarketSnapshot, PriceHistory
 from app.schemas.trader import (
     TraderProfileResponse,
     TraderListItem,
@@ -611,6 +611,43 @@ async def backfill_price_history(
         "outcome": request.outcome,
         "days_back": request.days_back,
     }
+
+
+@router.post("/resolve/bulk")
+async def bulk_resolve_trades(
+    concurrency: int = Query(10, le=50, description="Max concurrent API calls"),
+):
+    """
+    Bulk-resolve all unresolved trades by checking each market's resolution
+    status via the Polymarket CLOB API. This looks up every distinct market_id
+    that has unresolved trades and resolves them, then recalculates trader profiles.
+    """
+    from app.services.resolution_worker import get_resolution_worker
+    from app.services.insider_detector import InsiderDetector
+
+    worker = await get_resolution_worker()
+    stats = await worker.bulk_resolve_all(concurrency=concurrency)
+
+    # Recalculate profiles for traders whose trades were resolved
+    if stats["trades_resolved"] > 0:
+        detector = InsiderDetector()
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(Trade.wallet_address)
+                .where(Trade.is_resolved == True)
+                .distinct()
+            )
+            wallets = [row[0] for row in result.all()]
+
+        recalculated = 0
+        async with async_session_maker() as session:
+            for wallet in wallets:
+                await detector.update_trader_profile(wallet, session)
+                recalculated += 1
+
+        stats["profiles_recalculated"] = recalculated
+
+    return stats
 
 
 @router.post("/backfill/trades")

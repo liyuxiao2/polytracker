@@ -4,6 +4,8 @@ from typing import Optional
 
 
 class TradeBase(BaseModel):
+    #TODO, check if there are duplicate trades (buy/sell)
+    #we can check which side is winning/losing
     wallet_address: str
     market_id: str
     market_slug: Optional[str] = None
@@ -11,7 +13,7 @@ class TradeBase(BaseModel):
     trade_size_usd: float
     outcome: Optional[str] = None  # YES or NO
     price: Optional[float] = None
-    timestamp: datetime
+    timestamp: datetime 
     side: Optional[str] = None  # BUY or SELL
     trade_type: Optional[str] = None  # MARKET, LIMIT, etc.
 

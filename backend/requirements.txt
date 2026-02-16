@@ -13,6 +13,10 @@ asyncpg==0.29.0
 psycopg2-binary==2.9.9
 greenlet==3.2.4
 
+# Testing
+pytest==8.0.0
+pytest-asyncio==0.23.3
+
 # Optional: For generating Polymarket API credentials
 # pip install py-clob-client
 # py-clob-client>=0.16.0
