@@ -19,18 +19,17 @@ class TradeBase(BaseModel):
 
 
 class TradeCreate(TradeBase):
-    transaction_hash: Optional[str] = None
+    transaction_hash: str
     asset_id: Optional[str] = None
 
 
 class TradeResponse(TradeBase):
-    id: int
+    transaction_hash: str
     is_flagged: bool
     flag_reason: Optional[str] = None
     z_score: Optional[float] = None
     is_win: Optional[bool] = None
     pnl_usd: Optional[float] = None
-    transaction_hash: Optional[str] = None
     # Unrealized P&L fields (for open positions)
     unrealized_pnl_usd: Optional[float] = None
     current_position_value_usd: Optional[float] = None

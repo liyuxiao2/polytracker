@@ -294,7 +294,7 @@ export default function TraderDetail({ address, onClose }: TraderDetailProps) {
                 </thead>
                 <tbody className="divide-y divide-slate-700">
                   {trades.slice(0, 20).map((trade) => (
-                    <tr key={trade.id} className="hover:bg-slate-700/50">
+                    <tr key={trade.transaction_hash} className="hover:bg-slate-700/50">
                       <td className="px-6 py-4 text-sm text-slate-300 max-w-xs truncate">
                         {trade.market_slug ? (
                           <a
