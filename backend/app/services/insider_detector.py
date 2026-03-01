@@ -701,7 +701,7 @@ class InsiderDetector:
             # Find other trades in this window
             window_trades = [
                 t for t in trades
-                if t.id != trade.id
+                if t.transaction_hash != trade.transaction_hash
                 and window_start <= t.timestamp <= window_end
                 and t.wallet_address != trade.wallet_address
             ]

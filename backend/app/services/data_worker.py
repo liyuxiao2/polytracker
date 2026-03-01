@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import uuid
 from datetime import datetime
 from typing import Optional, List
 from sqlalchemy import select
@@ -84,7 +85,7 @@ class DataIngestionWorker:
                 return None
 
             # Get transaction hash for deduplication (primary method)
-            transaction_hash = trade_data.get("id", "")
+            transaction_hash = trade_data.get("id", "") or f"unknown_{uuid.uuid4().hex[:16]}"
 
             # Skip if trade already exists using transaction_hash (best deduplication)
             if transaction_hash:
@@ -145,7 +146,7 @@ class DataIngestionWorker:
                 # Trade direction fields
                 side=side,
                 trade_type=None,  # Not available from API yet
-                transaction_hash=transaction_hash if transaction_hash else None,
+                transaction_hash=transaction_hash,
                 asset_id=asset_id if asset_id else None,
                 # Timing analysis field
                 trade_hour_utc=timestamp.hour,

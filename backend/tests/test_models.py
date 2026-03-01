@@ -14,6 +14,7 @@ class TestTradeModel:
             market_name="Will BTC hit 100k?",
             trade_size_usd=5000.0,
             timestamp=datetime(2025, 1, 15, 12, 0, 0),
+            transaction_hash="tx_create_test",
         )
         session.add(trade)
         await session.commit()
@@ -32,11 +33,12 @@ class TestTradeModel:
             market_id="market_2",
             market_name="Election 2025",
             trade_size_usd=1000.0,
+            transaction_hash="tx_defaults_test",
         )
         session.add(trade)
         await session.commit()
 
-        result = await session.execute(select(Trade).where(Trade.id == trade.id))
+        result = await session.execute(select(Trade).where(Trade.transaction_hash == "tx_defaults_test"))
         saved = result.scalar_one()
 
         assert saved.is_flagged is False
@@ -78,6 +80,7 @@ class TestTradeModel:
             resolved_outcome="YES",
             is_win=True,
             pnl_usd=5000.0,
+            transaction_hash="tx_resolved_test",
         )
         session.add(trade)
         await session.commit()

@@ -310,7 +310,7 @@ export default function MarketWatch() {
                         <tbody className="divide-y divide-slate-800">
                           {marketTrades.map((trade) => (
                             <tr
-                              key={trade.id}
+                              key={trade.transaction_hash}
                               className="hover:bg-slate-800/30"
                             >
                               <td className="px-4 py-3 text-slate-300">

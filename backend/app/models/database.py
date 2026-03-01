@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Index
 from datetime import datetime
 import os
 from dotenv import load_dotenv
@@ -33,7 +33,6 @@ Base = declarative_base()
 class Trade(Base):
     __tablename__ = "trades"
 
-    id = Column(Integer, primary_key=True, index=True)
     wallet_address = Column(String, index=True, nullable=False)
     market_id = Column(String, index=True, nullable=False)
     market_slug = Column(String, nullable=True)
@@ -49,7 +48,7 @@ class Trade(Base):
     # NEW: Trade direction and type fields
     side = Column(String, nullable=True)  # BUY or SELL
     trade_type = Column(String, nullable=True)  # MARKET, LIMIT, etc.
-    transaction_hash = Column(String, unique=True, index=True, nullable=True)  # Unique trade identifier
+    transaction_hash = Column(String, primary_key=True, nullable=False)
     asset_id = Column(String, nullable=True)  # Token/asset identifier
 
     # Resolution fields
@@ -67,6 +66,11 @@ class Trade(Base):
     current_position_value_usd = Column(Float, nullable=True)  # Current market value of position
     shares_held = Column(Float, nullable=True)  # Number of shares purchased (size/price)
     last_pnl_update = Column(DateTime, nullable=True)  # When P&L was last calculated
+
+    __table_args__ = (
+        Index("ix_trades_wallet_market_time", "wallet_address", "market_id", "timestamp"),
+        Index("ix_trades_market_time_wallet", "market_id", "timestamp", "wallet_address"),
+    )
 
 
 class TraderProfile(Base):

@@ -253,7 +253,7 @@ async def get_dashboard_stats(
     # High-signal alerts today
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     alerts_result = await session.execute(
-        select(func.count(Trade.id))
+        select(func.count(Trade.transaction_hash))
         .where(
             (Trade.is_flagged == True) &
             (Trade.timestamp >= today_start)
@@ -263,7 +263,7 @@ async def get_dashboard_stats(
 
     # Total trades monitored
     total_trades_result = await session.execute(
-        select(func.count(Trade.id))
+        select(func.count(Trade.transaction_hash))
     )
     total_trades = total_trades_result.scalar() or 0
 
@@ -275,7 +275,7 @@ async def get_dashboard_stats(
 
     # Resolved trades (where is_win is not null) - these are trades we can verify won/lost
     resolved_result = await session.execute(
-        select(func.count(Trade.id))
+        select(func.count(Trade.transaction_hash))
         .where(Trade.is_win.isnot(None))
     )
     total_resolved = resolved_result.scalar() or 0
@@ -283,8 +283,8 @@ async def get_dashboard_stats(
     # Average win rate from resolved flagged trades
     flagged_resolved_result = await session.execute(
         select(
-            func.count(Trade.id).filter(Trade.is_win == True),
-            func.count(Trade.id)
+            func.count(Trade.transaction_hash).filter(Trade.is_win == True),
+            func.count(Trade.transaction_hash)
         )
         .where(
             (Trade.is_flagged == True) &
@@ -316,7 +316,7 @@ async def get_dashboard_stats(
 
     # NEW: Unrealized P&L statistics (open positions)
     open_positions_result = await session.execute(
-        select(func.count(Trade.id))
+        select(func.count(Trade.transaction_hash))
         .where((Trade.is_win.is_(None)) & (Trade.unrealized_pnl_usd.isnot(None)))
     )
     total_open_positions = open_positions_result.scalar() or 0
@@ -426,7 +426,7 @@ async def get_market_trades_count(
     Get total trade count for a market.
     """
     result = await session.execute(
-        select(func.count(Trade.id)).where(Trade.market_id == market_id)
+        select(func.count(Trade.transaction_hash)).where(Trade.market_id == market_id)
     )
     count = result.scalar() or 0
     return {"market_id": market_id, "total_trades": count}

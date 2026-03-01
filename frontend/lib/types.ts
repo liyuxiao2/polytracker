@@ -54,7 +54,7 @@ export interface TraderProfile {
 }
 
 export interface Trade {
-  id: number;
+  transaction_hash: string;
   wallet_address: string;
   market_id: string;
   market_slug?: string;
@@ -71,7 +71,6 @@ export interface Trade {
   // Trade direction
   side?: string;
   trade_type?: string;
-  transaction_hash?: string;
 }
 
 export interface DashboardStats {
