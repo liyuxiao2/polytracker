@@ -34,19 +34,28 @@ class InsiderDetector:
         self,
         wallet_address: str,
         trade_size: float,
-        session: AsyncSession
+        session: AsyncSession,
+        tracked_markets: set = None
     ) -> tuple[float, bool]:
         """
         Calculate Z-score for a trade based on wallet's historical average.
+        Only considers trades from tracked markets if specified.
+
         Returns (z_score, is_anomaly)
         """
         # Get historical trades for this wallet
-        result = await session.execute(
+        query = (
             select(Trade.trade_size_usd)
             .where(Trade.wallet_address == wallet_address)
             .order_by(Trade.timestamp.desc())
             .limit(100)
         )
+
+        # Filter by tracked markets if provided
+        if tracked_markets:
+            query = query.where(Trade.market_id.in_(tracked_markets))
+
+        result = await session.execute(query)
         historical_trades = result.scalars().all()
 
         if len(historical_trades) < 3:
@@ -287,18 +296,26 @@ class InsiderDetector:
     async def update_trader_profile(
         self,
         wallet_address: str,
-        session: AsyncSession
+        session: AsyncSession,
+        tracked_markets: set = None
     ) -> TraderProfile:
         """
         Update or create trader profile with latest statistics.
+        Only includes trades from tracked markets if specified.
         Includes win rate, PnL, outcome bias, buy/sell tracking, and advanced signals.
         """
         # Get all trades for this wallet (ordered by timestamp for age calculation)
-        result = await session.execute(
+        query = (
             select(Trade)
             .where(Trade.wallet_address == wallet_address)
             .order_by(Trade.timestamp.asc())
         )
+
+        # Filter by tracked markets if provided
+        if tracked_markets:
+            query = query.where(Trade.market_id.in_(tracked_markets))
+
+        result = await session.execute(query)
         trades = list(result.scalars().all())
 
         if not trades:
