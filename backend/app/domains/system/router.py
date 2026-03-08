@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.database import get_session
-from app.schemas.trader import DashboardStats
-from app.services.system_service import SystemService
+from app.core.database import get_session
+from app.domains.traders.schema import DashboardStats
+from app.domains.system.service import SystemService
 
 router = APIRouter()
 system_service = SystemService()

@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
-from app.models.database import get_session
-from app.schemas.trader import TraderProfileResponse, TraderListItem, TrendingTrade, TradeResponse
-from app.services.trader_service import TraderService
+from app.core.database import get_session
+from app.domains.traders.schema import TraderProfileResponse, TraderListItem, TrendingTrade, TradeResponse
+from app.domains.traders.service import TraderService
 
 router = APIRouter()
 trader_service = TraderService()

@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.repositories.trader_repository import TraderRepository
-from app.schemas.trader import DashboardStats
+from app.domains.traders.repository import TraderRepository
+from app.domains.traders.schema import DashboardStats
 from datetime import datetime, timedelta
 
 class SystemService:
