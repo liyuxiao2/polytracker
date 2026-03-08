@@ -166,7 +166,7 @@ class PolymarketClient:
 
             logger.info(f"Found {len(matches)} markets matching '{query}'")
             return matches
-        except Exception as e:
+        except httpx.RequestError as e:
             logger.error(f"Error searching markets: {e}")
             return []
 
