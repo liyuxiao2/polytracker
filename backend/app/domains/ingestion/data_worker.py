@@ -41,6 +41,13 @@ class DataIngestionWorker:
     ):
         return await self.ingestion_service.backfill_historical_trades(max_pages, target_market_ids, days_back, stop_on_duplicates)
 
+    async def backfill_multiple_markets_parallel(
+        self,
+        market_ids: list,
+        max_pages_per_market: int = 10000
+    ):
+        return await self.ingestion_service.backfill_multiple_markets_parallel(market_ids, max_pages_per_market)
+
 
 worker_instance = None
 
