@@ -1,0 +1,29 @@
+{
+  "Trump 2024 Election": {
+    "condition_id": "0x26ee82bee2493a302d21283cb578f7e2fff2dd15743854f53034d12420863b55",
+    "question": "Which party wins 2024 US Presidential Election?",
+    "yes_token_id": null,
+    "no_token_id": null,
+    "closed": true,
+    "liquidity": 0,
+    "volume": 8828319.27610304
+  },
+  "Iran Regime Overthrow": {
+    "condition_id": "0xd03fe97122a627acec515c88f3d351ad28e78cda436e158563fe346c1408f66e",
+    "question": "Israeli parliament dissolved by March 31?",
+    "yes_token_id": null,
+    "no_token_id": null,
+    "closed": false,
+    "liquidity": 9379.16311,
+    "volume": 520959.48633000086
+  },
+  "Largest Company December 2026": {
+    "condition_id": "0x448f73e89890ae9d0e42ad0b592f63b53c0ae05d1ca3fa8d80b30027781f1be7",
+    "question": "Will Trump resign by December 31, 2026?",
+    "yes_token_id": null,
+    "no_token_id": null,
+    "closed": false,
+    "liquidity": 91788.2738,
+    "volume": 387365.3036639991
+  }
+}
