@@ -4,10 +4,10 @@ from datetime import datetime, timedelta
 from sqlalchemy import select, distinct, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.database import Trade, Market, async_session_maker
-from app.services.polymarket_client import PolymarketClient
-from app.services.insider_detector import InsiderDetector
-from app.config import get_settings
+from app.core.database import Trade, Market, async_session_maker
+from app.domains.ingestion.polymarket_client import PolymarketClient
+from app.domains.ingestion.insider_detector import InsiderDetector
+from app.core.config import get_settings
 
 
 class ResolutionChecker:

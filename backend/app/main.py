@@ -3,11 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncio
 from app.api.router import api_router
-from app.models.database import init_db
-from app.services.data_worker import get_worker
-from app.services.resolution_worker import get_resolution_worker
-from app.services.market_watch_worker import get_market_watch_worker
-from app.services.snapshot_worker import get_snapshot_worker
+from app.core.database import init_db
+from app.domains.ingestion.data_worker import get_worker
+from app.domains.ingestion.resolution_worker import get_resolution_worker
+from app.domains.ingestion.market_watch_worker import get_market_watch_worker
+from app.domains.ingestion.snapshot_worker import get_snapshot_worker
 import logging
 import os
 

@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 from datetime import datetime
-from app.models.database import get_session
-from app.schemas.trader import (
+from app.core.database import get_session
+from app.domains.traders.schema import (
     MarketWatchItem,
     TradeResponse,
     TrackedMarketResponse,
@@ -13,7 +13,7 @@ from app.schemas.trader import (
     PriceHistoryResponse,
     BackfillRequest
 )
-from app.services.market_service import MarketService
+from app.domains.markets.service import MarketService
 
 router = APIRouter()
 market_service = MarketService()
