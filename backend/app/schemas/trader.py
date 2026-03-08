@@ -19,13 +19,13 @@ class TradeBase(BaseModel):
 
 
 class TradeCreate(TradeBase):
-    transaction_hash: str
+    transaction_hash: Optional[str] = None
     asset_id: Optional[str] = None
 
 
 class TradeResponse(TradeBase):
-    transaction_hash: str
     is_flagged: bool
+    transaction_hash: Optional[str] = None
     flag_reason: Optional[str] = None
     z_score: Optional[float] = None
     is_win: Optional[bool] = None
