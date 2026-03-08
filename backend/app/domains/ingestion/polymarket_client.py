@@ -143,6 +143,83 @@ class PolymarketClient:
             logger.error(f"Error fetching markets list: {e}")
             return []
 
+    async def search_markets(self, query: str, limit: int = 200) -> List[dict]:
+        """
+        Search markets by question text using Gamma API.
+        Note: Polymarket doesn't have a search endpoint, so we fetch
+        all markets and filter client-side.
+        """
+        try:
+            response = await self.client.get(
+                f"{self.gamma_api_base}/markets",
+                params={"limit": limit, "offset": 0}
+            )
+            response.raise_for_status()
+            all_markets = response.json()
+
+            # Filter by query (client-side)
+            query_lower = query.lower()
+            matches = [
+                m for m in all_markets
+                if query_lower in m.get("question", "").lower()
+            ]
+
+            logger.info(f"Found {len(matches)} markets matching '{query}'")
+            return matches
+        except Exception as e:
+            logger.error(f"Error searching markets: {e}")
+            return []
+
+    async def find_market_by_keywords(
+        self,
+        keywords: List[str],
+        allow_closed: bool = True
+    ) -> Optional[dict]:
+        """
+        Find a specific market by searching for multiple keyword variations.
+        Returns best match using fuzzy matching.
+
+        Args:
+            keywords: List of search terms (e.g., ["Trump 2024", "Trump election"])
+            allow_closed: If False, skip resolved markets
+
+        Returns:
+            Best matching market with highest similarity score
+        """
+        from difflib import SequenceMatcher
+
+        best_match = None
+        best_score = 0.0
+
+        for keyword in keywords:
+            matches = await self.search_markets(keyword, limit=200)
+
+            for market in matches:
+                question = market.get("question", "")
+
+                # Skip closed markets if not allowed
+                if not allow_closed and market.get("closed", False):
+                    continue
+
+                # Calculate similarity score using difflib
+                similarity = SequenceMatcher(
+                    None,
+                    keyword.lower(),
+                    question.lower()
+                ).ratio()
+
+                if similarity > best_score:
+                    best_score = similarity
+                    best_match = market
+
+        if best_match:
+            logger.info(
+                f"Best match (score {best_score:.2f}): "
+                f"{best_match.get('question')}"
+            )
+
+        return best_match
+
     async def get_resolved_markets(self, limit: int = 100, offset: int = 0) -> List[dict]:
         """
         Fetch resolved/closed markets from Gamma API.
