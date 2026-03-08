@@ -3,7 +3,7 @@ from sqlalchemy import select, func, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta
 from typing import Optional, Tuple, List, Dict
-from app.models.database import Trade, TraderProfile
+from app.core.database import Trade, TraderProfile
 import os
 
 
