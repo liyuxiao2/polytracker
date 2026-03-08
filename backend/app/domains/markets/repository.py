@@ -2,7 +2,7 @@ from typing import List, Optional, Tuple
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, asc
-from app.models.database import Market, Trade, TrackedMarket, MarketSnapshot, PriceHistory
+from app.core.database import Market, Trade, TrackedMarket, MarketSnapshot, PriceHistory
 
 class MarketRepository:
     """

@@ -2,7 +2,7 @@ from typing import List, Tuple, Optional
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, asc, and_
-from app.models.database import Trade, TraderProfile
+from app.core.database import Trade, TraderProfile
 
 class TraderRepository:
     """

@@ -5,10 +5,10 @@ import asyncio
 import uuid
 import os
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.database import Trade, async_session_maker
-from app.repositories.trader_repository import TraderRepository
-from app.services.polymarket_client import PolymarketClient
-from app.services.insider_detector import InsiderDetector
+from app.core.database import Trade, async_session_maker
+from app.domains.traders.repository import TraderRepository
+from app.domains.ingestion.polymarket_client import PolymarketClient
+from app.domains.ingestion.insider_detector import InsiderDetector
 
 logger = logging.getLogger(__name__)
 

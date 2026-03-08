@@ -2,8 +2,8 @@ from typing import List, Optional
 from datetime import datetime
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.repositories.market_repository import MarketRepository
-from app.schemas.trader import (
+from app.domains.markets.repository import MarketRepository
+from app.domains.traders.schema import (
     MarketWatchItem,
     TradeResponse,
     TrackedMarketResponse,
@@ -42,7 +42,7 @@ class MarketService:
         return [TrackedMarketResponse.model_validate(m) for m in markets]
 
     async def add_tracked_market(self, market: TrackedMarketCreate) -> TrackedMarketResponse:
-        from app.services.snapshot_worker import get_snapshot_worker
+        from app.domains.ingestion.snapshot_worker import get_snapshot_worker
         worker = await get_snapshot_worker()
         tracked = await worker.add_tracked_market(
             market_id=market.market_id,
@@ -54,7 +54,7 @@ class MarketService:
         return TrackedMarketResponse.model_validate(tracked)
 
     async def discover_markets(self, request: DiscoverMarketsRequest) -> List[TrackedMarketResponse]:
-        from app.services.snapshot_worker import get_snapshot_worker
+        from app.domains.ingestion.snapshot_worker import get_snapshot_worker
         worker = await get_snapshot_worker()
         discovered = await worker.auto_discover_markets(
             categories=request.categories,
@@ -87,7 +87,7 @@ class MarketService:
         return [PriceHistoryResponse.model_validate(h) for h in history]
 
     async def backfill_price_history(self, request: BackfillRequest) -> dict:
-        from app.services.snapshot_worker import get_snapshot_worker
+        from app.domains.ingestion.snapshot_worker import get_snapshot_worker
         worker = await get_snapshot_worker()
         count = await worker.backfill_price_history(
             market_id=request.market_id,
@@ -105,9 +105,9 @@ class MarketService:
         }
 
     async def bulk_resolve_trades(self, concurrency: int) -> dict:
-        from app.services.resolution_worker import get_resolution_worker
-        from app.services.insider_detector import InsiderDetector
-        from app.models.database import async_session_maker
+        from app.domains.ingestion.resolution_worker import get_resolution_worker
+        from app.domains.ingestion.insider_detector import InsiderDetector
+        from app.core.database import async_session_maker
         
         worker = await get_resolution_worker()
         stats = await worker.bulk_resolve_all(concurrency=concurrency)
@@ -128,7 +128,7 @@ class MarketService:
         return stats
 
     async def backfill_trades(self, max_pages: int, market_ids: Optional[List[str]]) -> dict:
-        from app.services.data_worker import run_backfill
+        from app.domains.ingestion.data_worker import run_backfill
         # target_markets = set(market_ids) if market_ids else None
         
         # run_backfill could take target_markets but route currently only does max_pages

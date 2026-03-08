@@ -19,7 +19,7 @@ async def bulk_resolve_trades(
     concurrency: int = Query(10, le=50, description="Max concurrent API calls"),
 ):
     """Bulk-resolve all unresolved trades."""
-    from app.services.market_service import MarketService
+    from app.domains.markets.service import MarketService
     market_service = MarketService()
     return await market_service.bulk_resolve_trades(concurrency)
 
@@ -28,6 +28,6 @@ async def get_backtesting_stats(
     session: AsyncSession = Depends(get_session)
 ):
     """Get statistics about backtesting data collection."""
-    from app.services.market_service import MarketService
+    from app.domains.markets.service import MarketService
     market_service = MarketService()
     return await market_service.get_backtesting_stats(session)

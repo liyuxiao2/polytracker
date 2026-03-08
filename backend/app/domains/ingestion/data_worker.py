@@ -1,8 +1,8 @@
 import asyncio
 import logging
 import os
-from app.services.polymarket_client import PolymarketClient
-from app.services.data_ingestion_service import DataIngestionService
+from app.domains.ingestion.polymarket_client import PolymarketClient
+from app.domains.ingestion.data_ingestion_service import DataIngestionService
 
 logger = logging.getLogger(__name__)
 

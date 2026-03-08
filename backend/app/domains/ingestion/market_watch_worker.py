@@ -5,8 +5,8 @@ import asyncio
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
-from app.models.database import Market, Trade, async_session_maker
-from app.services.polymarket_client import PolymarketClient
+from app.core.database import Market, Trade, async_session_maker
+from app.domains.ingestion.polymarket_client import PolymarketClient
 import logging
 import statistics
 

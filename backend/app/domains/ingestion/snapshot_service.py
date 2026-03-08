@@ -3,9 +3,9 @@ import json
 import logging
 from typing import List, Optional
 from datetime import datetime, timedelta
-from app.models.database import async_session_maker, MarketSnapshot, TrackedMarket, PriceHistory
-from app.repositories.market_repository import MarketRepository
-from app.services.polymarket_client import PolymarketClient
+from app.core.database import async_session_maker, MarketSnapshot, TrackedMarket, PriceHistory
+from app.domains.markets.repository import MarketRepository
+from app.domains.ingestion.polymarket_client import PolymarketClient
 
 logger = logging.getLogger(__name__)
 

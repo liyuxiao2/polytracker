@@ -2,8 +2,8 @@ import asyncio
 import logging
 import os
 from typing import List
-from app.models.database import TrackedMarket
-from app.services.snapshot_service import SnapshotService
+from app.core.database import TrackedMarket
+from app.domains.ingestion.snapshot_service import SnapshotService
 
 logger = logging.getLogger(__name__)
 

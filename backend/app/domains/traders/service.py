@@ -1,9 +1,9 @@
 from typing import List, Optional
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.repositories.trader_repository import TraderRepository
-from app.schemas.trader import TraderListItem, TrendingTrade, TraderProfileResponse, TradeResponse
-from app.services.insider_detector import InsiderDetector
+from app.domains.traders.repository import TraderRepository
+from app.domains.traders.schema import TraderListItem, TrendingTrade, TraderProfileResponse, TradeResponse
+from app.domains.ingestion.insider_detector import InsiderDetector
 from datetime import datetime, timedelta
 
 class TraderService:

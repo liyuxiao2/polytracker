@@ -4,8 +4,8 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
-from app.models.database import Trade, TraderProfile, async_session_maker
-from app.services.polymarket_client import PolymarketClient
+from app.core.database import Trade, TraderProfile, async_session_maker
+from app.domains.ingestion.polymarket_client import PolymarketClient
 import os
 
 logger = logging.getLogger(__name__)
