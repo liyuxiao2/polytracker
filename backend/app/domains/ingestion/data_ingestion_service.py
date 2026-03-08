@@ -1,66 +1,37 @@
-import asyncio
 import logging
-import os
-import uuid
-from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import select
+from datetime import datetime, timedelta
+import asyncio
+import uuid
+import os
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.database import Trade, async_session_maker
+from app.repositories.trader_repository import TraderRepository
 from app.services.polymarket_client import PolymarketClient
 from app.services.insider_detector import InsiderDetector
 
 logger = logging.getLogger(__name__)
 
-
-class DataIngestionWorker:
+class DataIngestionService:
     def __init__(self):
+        self.trader_repo = TraderRepository()
         self.client = PolymarketClient()
         self.detector = InsiderDetector()
-        self.poll_interval = int(os.getenv("POLL_INTERVAL_SECONDS", "10"))
-        self.min_trade_size = float(os.getenv("MIN_TRADE_SIZE_USD", "0"))  # Default 0 = no filter
+        self.min_trade_size = float(os.getenv("MIN_TRADE_SIZE_USD", "0"))
         self.trade_fetch_limit = int(os.getenv("TRADE_FETCH_LIMIT", "1000"))
-        self.is_running = False
 
-    async def start(self):
-        """
-        Start the background worker that continuously polls Polymarket API.
-        """
-        self.is_running = True
-        logger.info(f"[Worker] Starting data ingestion worker (poll interval: {self.poll_interval}s)")
-
-        while self.is_running:
-            try:
-                await self._process_trades()
-                await asyncio.sleep(self.poll_interval)
-            except Exception as e:
-                logger.error(f"[Worker] Error in ingestion loop: {e}")
-                await asyncio.sleep(5)  # Brief pause on error
-
-    async def stop(self):
-        """
-        Stop the background worker.
-        """
-        self.is_running = False
-        await self.client.close()
-        logger.info("[Worker] Data ingestion worker stopped")
-
-    async def _process_trades(self):
-        """
-        Fetch trades from API, calculate z-scores, and store in database.
-        """
+    async def process_trades(self) -> dict:
         import time
         start_time = time.time()
+        new_trades = 0
+        flagged_trades = 0
 
         async with async_session_maker() as session:
             trades = await self.client.get_recent_trades(limit=self.trade_fetch_limit)
             fetch_time = time.time() - start_time
 
-            new_trades = 0
-            flagged_trades = 0
-
             for trade_data in trades:
-                result = await self._process_single_trade(trade_data, session)
+                result = await self.process_single_trade(trade_data, session)
                 if result:
                     new_trades += 1
                     if result.is_flagged:
@@ -69,60 +40,41 @@ class DataIngestionWorker:
             await session.commit()
             total_time = time.time() - start_time
             if new_trades > 0:
-                logger.info(f"[Worker] Ingested {new_trades} new trades ({flagged_trades} flagged) [fetch: {fetch_time:.1f}s, total: {total_time:.1f}s]")
+                logger.info(f"[Ingestion] Ingested {new_trades} new trades ({flagged_trades} flagged) [fetch: {fetch_time:.1f}s, total: {total_time:.1f}s]")
+                
+        return {"new_trades": new_trades, "flagged_trades": flagged_trades}
 
-    async def _process_single_trade(self, trade_data: dict, session: AsyncSession) -> Optional[Trade]:
-        """
-        Process a single trade: calculate z-score and store.
-        Returns the Trade object if created, None if skipped.
-        """
+    async def process_single_trade(self, trade_data: dict, session: AsyncSession) -> Optional[Trade]:
         try:
             wallet_address = trade_data.get("maker_address", "")
             trade_size_usd = float(trade_data.get("size", 0))
 
-            # Filter out bot trades / small trades (disabled by default, set MIN_TRADE_SIZE_USD to enable)
             if self.min_trade_size > 0 and trade_size_usd < self.min_trade_size:
                 return None
 
-            # Get transaction hash for deduplication (primary method)
             transaction_hash = trade_data.get("id", "") or f"unknown_{uuid.uuid4().hex[:16]}"
-
-            # Skip if trade already exists using transaction_hash (best deduplication)
+            
             if transaction_hash:
-                existing = await session.execute(
-                    select(Trade).where(Trade.transaction_hash == transaction_hash)
-                )
-                if existing.scalar_one_or_none():
+                existing = await self.trader_repo.get_trade_by_transaction_hash(session, transaction_hash)
+                if existing:
                     return None
 
-            # Parse all trade fields
             market_id = trade_data.get("market", "")
             market_slug = trade_data.get("event_slug", "")
             market_name = trade_data.get("market_name", "Unknown Market")
             timestamp = datetime.fromtimestamp(int(trade_data.get("timestamp", 0)) / 1000)
-
-            # NEW: Parse trade direction and type
-            side = trade_data.get("side", "").upper()  # BUY or SELL
+            side = trade_data.get("side", "").upper()
             if side not in ("BUY", "SELL"):
                 side = None
 
-            # Determine outcome (YES/NO/Up/Down/TeamName) from the trade
             outcome = trade_data.get("outcome", "")
-            # Removed strict YES/NO check to support all market types
-
-
-            # Parse price (0-1 decimal representing probability)
             price = float(trade_data.get("price", 0))
-
-            # Asset ID for tracking specific tokens
             asset_id = trade_data.get("asset_id", "")
 
-            # Calculate z-score for anomaly detection
             z_score, is_flagged = await self.detector.calculate_z_score(
                 wallet_address, trade_size_usd, session
             )
 
-            # Determine flag reason if flagged
             flag_reason = None
             if is_flagged:
                 if z_score > 0:
@@ -130,7 +82,6 @@ class DataIngestionWorker:
                 else:
                     flag_reason = f"Unusually small bet (z-score: {z_score:.2f})"
 
-            # Create trade record with all new fields
             trade = Trade(
                 wallet_address=wallet_address,
                 market_id=market_id,
@@ -143,66 +94,48 @@ class DataIngestionWorker:
                 is_flagged=is_flagged,
                 flag_reason=flag_reason,
                 z_score=z_score,
-                # Trade direction fields
                 side=side,
-                trade_type=None,  # Not available from API yet
+                trade_type=None,
                 transaction_hash=transaction_hash,
                 asset_id=asset_id if asset_id else None,
-                # Timing analysis field
                 trade_hour_utc=timestamp.hour,
             )
 
             session.add(trade)
 
-            # Update trader profile if this is a flagged trade
             if is_flagged:
                 profile = await self.detector.update_trader_profile(wallet_address, session)
-                
-                # Check for backfill if profile exists and has few trades (indicating new discovery)
                 if profile and profile.total_trades < 50:
-                    # Trigger background backfill
-                    asyncio.create_task(self._backfill_trader_history(wallet_address))
+                    asyncio.create_task(self.backfill_trader_history(wallet_address))
 
             return trade
 
         except Exception as e:
-            logger.error(f"[Worker] Error processing trade: {e}")
+            logger.error(f"[Ingestion] Error processing trade: {e}")
             return None
 
-    async def _backfill_trader_history(self, wallet_address: str):
-        """
-        Fetch historical trades for a wallet to populate profile stats immediately.
-        """
-        logger.info(f"[Worker] Backfilling history for {wallet_address}...")
+    async def backfill_trader_history(self, wallet_address: str):
+        logger.info(f"[Ingestion] Backfilling history for {wallet_address}...")
         try:
-            # Polymarket API returns recent activity
             activity = await self.client.get_user_activity(wallet_address, limit=500)
-            
             if not activity:
                 return
 
             async with async_session_maker() as session:
                 count = 0
                 for item in activity:
-                    # Parse activity item to Trade format
                     txn_hash = item.get("transactionHash")
                     if not txn_hash:
                         continue
                         
-                    # Skip if exists
-                    existing = await session.execute(
-                        select(Trade).where(Trade.transaction_hash == txn_hash)
-                    )
-                    if existing.scalar_one_or_none():
+                    existing = await self.trader_repo.get_trade_by_transaction_hash(session, txn_hash)
+                    if existing:
                         continue
                         
-                    # Extract fields
-                    market_id = item.get("conditionId") or "" # Activity might not have conditionId sometimes?
-                    # Check if type is trade
+                    market_id = item.get("conditionId") or ""
                     if item.get("type", "").upper() not in ("TRADE", "ERC1155_TRANSFER", "CTF_TRADE"):
                         continue
                         
-                    # Attempt to reconstruct trade
                     price = float(item.get("price", 0))
                     size = float(item.get("usdcSize", 0))
                     
@@ -226,19 +159,16 @@ class DataIngestionWorker:
                         trade_hour_utc=timestamp.hour
                     )
                     
-                    # We might not have resolution info yet, resolution worker will pick it up
                     session.add(trade)
                     count += 1
                 
                 await session.commit()
                 if count > 0:
-                    logger.info(f"[Worker] Backfilled {count} trades for {wallet_address}")
-                    # Update profile again with full history
+                    logger.info(f"[Ingestion] Backfilled {count} trades for {wallet_address}")
                     await self.detector.update_trader_profile(wallet_address, session)
                     
         except Exception as e:
-            logger.error(f"[Worker] Error backfilling {wallet_address}: {e}")
-
+            logger.error(f"[Ingestion] Error backfilling {wallet_address}: {e}")
 
     async def backfill_historical_trades(
         self,
@@ -247,15 +177,6 @@ class DataIngestionWorker:
         days_back: int = None,
         stop_on_duplicates: bool = True
     ):
-        """
-        Backfill historical trades by paginating through the API.
-
-        Args:
-            max_pages: Maximum number of pages to fetch (each page ~500 trades)
-            target_market_ids: Optional set of market IDs to filter for. If None, fetches all.
-            days_back: Optional - keep going until we reach this many days in the past
-            stop_on_duplicates: If False, keep going even when finding duplicates (for deep backfill)
-        """
         logger.info(f"[Backfill] Starting historical trade backfill (max {max_pages} pages, days_back={days_back})...")
 
         if days_back:
@@ -270,82 +191,47 @@ class DataIngestionWorker:
 
         async with async_session_maker() as session:
             for page in range(max_pages):
-                # Fetch trades, using oldest timestamp for pagination
                 trades = await self.client.get_historical_trades(
                     before_timestamp=oldest_timestamp,
                     limit=500
                 )
 
                 if not trades:
-                    logger.info(f"[Backfill] No more trades found after {pages_fetched} pages")
                     break
 
                 pages_fetched += 1
                 page_new = 0
 
                 for trade_data in trades:
-                    # Filter by market if target_market_ids specified
                     if target_market_ids:
                         market_id = trade_data.get("market", "")
                         if market_id not in target_market_ids:
                             continue
 
-                    # Process the trade (will skip if already exists)
-                    result = await self._process_single_trade(trade_data, session)
+                    result = await self.process_single_trade(trade_data, session)
                     if result:
                         page_new += 1
                         total_new += 1
                     else:
                         total_skipped += 1
 
-                # Get oldest timestamp for next page
                 if trades:
                     oldest_timestamp = min(t.get("timestamp", 0) for t in trades)
                     oldest_date = datetime.fromtimestamp(oldest_timestamp / 1000)
-                    logger.info(f"[Backfill] Page {pages_fetched}: {page_new} new trades (oldest: {oldest_date.strftime('%Y-%m-%d %H:%M')})")
-
-                    # Check if we've gone back far enough
+                    
                     if days_back and oldest_date < cutoff_date:
-                        logger.info(f"[Backfill] Reached target date {cutoff_date.strftime('%Y-%m-%d')}, stopping")
                         break
 
-                # Commit every page to avoid memory issues
                 await session.commit()
-
-                # Small delay to avoid rate limiting
                 await asyncio.sleep(0.3)
 
-                # Track consecutive empty pages
                 if page_new == 0:
                     consecutive_empty_pages += 1
                 else:
                     consecutive_empty_pages = 0
 
-                # Stop logic based on settings
                 if stop_on_duplicates and consecutive_empty_pages >= 3:
-                    logger.info(f"[Backfill] {consecutive_empty_pages} consecutive pages with no new trades, stopping")
                     break
 
         logger.info(f"[Backfill] Complete: {total_new} new trades, {total_skipped} skipped, {pages_fetched} pages")
         return total_new
-
-
-# Global worker instance
-worker_instance = None
-
-
-async def get_worker() -> DataIngestionWorker:
-    global worker_instance
-    if worker_instance is None:
-        worker_instance = DataIngestionWorker()
-    return worker_instance
-
-
-async def run_backfill(max_pages: int = 100, days_back: int = None, stop_on_duplicates: bool = True):
-    """Standalone function to run historical backfill"""
-    worker = await get_worker()
-    return await worker.backfill_historical_trades(
-        max_pages=max_pages,
-        days_back=days_back,
-        stop_on_duplicates=stop_on_duplicates
-    )
