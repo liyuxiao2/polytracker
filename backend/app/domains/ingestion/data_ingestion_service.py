@@ -384,7 +384,7 @@ class DataIngestionService:
                 try:
                     session.add(trade)
                     count += 1
-                except Exception:
+                except IntegrityError:
                     pass  # Skip duplicates
 
             return count
