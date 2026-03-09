@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:3001"]
 
     @property
-    def tracked_market_id_list(self) -> list:
+    def tracked_market_id_list(self) -> list[str]:
         """
         Parse tracked market IDs into list.
         Returns empty list if not configured.
