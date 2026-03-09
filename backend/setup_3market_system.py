@@ -21,6 +21,9 @@ import sys
 import os
 import logging
 
+# Ensure other scripts in the same directory can be imported
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 # Handle imports gracefully - some may not exist yet
 try:
     from discover_markets import discover_markets
@@ -119,8 +122,8 @@ async def main():
         print("   Copy the lines above into backend/.env")
         sys.exit(0)
 
-    # Reload settings to verify
-    os.environ["TRACKED_MARKET_IDS"] = ",".join(market_ids)  # Force reload
+    # Reload settings to verify that the .env file was updated
+    get_settings.cache_clear()
     settings = get_settings()
     tracked = settings.tracked_market_id_list
 
@@ -177,7 +180,7 @@ async def main():
         # Run parallel backfill
         total_trades = await worker.backfill_multiple_markets_parallel(
             market_ids=tracked,
-            max_pages_per_market=10000
+            max_pages_per_market=settings.backfill_max_pages
         )
     elif hasattr(worker, 'backfill_historical_trades'):
         # Fallback to sequential backfill
@@ -185,9 +188,9 @@ async def main():
         total_trades = 0
         for market_id in tracked:
             trades = await worker.backfill_historical_trades(
-                max_pages=10000,
+                max_pages=settings.backfill_max_pages,
                 target_market_ids={market_id},
-                stop_on_duplicates=False
+                stop_on_duplicates=settings.backfill_stop_on_duplicates
             )
             total_trades += trades
     else:
