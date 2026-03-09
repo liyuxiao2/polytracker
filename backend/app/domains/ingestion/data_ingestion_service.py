@@ -306,7 +306,8 @@ class DataIngestionService:
             if isinstance(timestamp_ms, int):
                 timestamp = datetime.fromtimestamp(timestamp_ms / 1000)
             else:
-                timestamp = datetime.utcnow()
+                logger.warning(f"Invalid timestamp format for trade: {trade_data.get('id')}. Skipping.")
+                return None
 
             trade = Trade(
                 transaction_hash=transaction_hash,
