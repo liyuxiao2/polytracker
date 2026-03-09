@@ -121,6 +121,7 @@ async def main():
 
     # Reload settings to verify
     os.environ["TRACKED_MARKET_IDS"] = ",".join(market_ids)  # Force reload
+    get_settings.cache_clear()
     settings = get_settings()
     tracked = settings.tracked_market_id_list
 
