@@ -78,16 +78,19 @@ class MarketWatchWorker:
                 return markets
             else:
                 # Fetch ONLY tracked markets
+                tracked_markets_list = list(self.tracked_markets)
+                tasks = [self.client.get_market_info(market_id) for market_id in tracked_markets_list]
+                market_infos = await asyncio.gather(*tasks)
+
                 markets = []
-                for market_id in self.tracked_markets:
-                    market_info = await self.client.get_market_info(market_id)
+                for market_id, market_info in zip(tracked_markets_list, market_infos):
                     if market_info:
-                        # Convert to expected format (mimics Gamma API response)
+                        # This assumes get_market_info is modified to return 'tokens'
                         markets.append({
                             "conditionId": market_id,
                             "question": market_info.get("question", ""),
                             "closed": market_info.get("resolved", False),
-                            "tokens": [],  # Token IDs not needed for market watch
+                            "tokens": market_info.get("tokens", []),
                             "endDateIso": market_info.get("end_date", "")
                         })
 
