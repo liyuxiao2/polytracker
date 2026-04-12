@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.database import Market, Trade, async_session_maker
+from app.core.database import Market, Trade, get_db_session
 from app.domains.ingestion.polymarket_client import PolymarketClient
 
 logging.basicConfig(level=logging.INFO)
@@ -31,30 +31,11 @@ class MarketWatchWorker:
         self.running = False
         self.task = None
 
-        # Category keywords for market classification
-        self.category_keywords = {
-            "NBA": ["nba", "basketball", "lakers", "warriors", "celtics", "mvp", "finals"],
-            "NFL": ["nfl", "football", "super bowl", "quarterback", "patriots", "cowboys"],
-            "Politics": [
-                "president",
-                "election",
-                "senate",
-                "congress",
-                "democrat",
-                "republican",
-                "biden",
-                "trump",
-                "harris",
-            ],
-            "Crypto": ["bitcoin", "ethereum", "crypto", "btc", "eth", "solana", "doge", "blockchain"],
-            "Business": ["stock", "tesla", "apple", "amazon", "ipo", "merger", "ceo"],
-            "Entertainment": ["oscar", "emmy", "grammy", "movie", "album", "box office"],
-            "Science": ["covid", "vaccine", "mars", "spacex", "nasa", "climate"],
-            "Sports": ["world cup", "olympics", "soccer", "tennis", "formula 1", "ufc"],
-        }
+        # Category keywords from config
+        settings = get_settings()
+        self.category_keywords = settings.category_keywords
 
         # Market filtering
-
         self.settings = get_settings()
         self.tracked_markets = set(self.settings.tracked_market_id_list)
 
@@ -94,7 +75,8 @@ class MarketWatchWorker:
                 return markets
             else:
                 # Fetch ONLY tracked markets (in parallel)
-                tasks = [self.client.get_market_info(market_id) for market_id in self.tracked_markets]
+                tracked_markets_list = list(self.tracked_markets)
+                tasks = [self.client.get_market_info(market_id) for market_id in tracked_markets_list]
                 market_infos = await asyncio.gather(*tasks)
 
                 markets = []
@@ -240,7 +222,8 @@ class MarketWatchWorker:
             # Factor 4: Timing (trades close to resolution) (0-20 points)
             if market.is_resolved and market.resolution_time:
                 late_trades = [
-                    t for t in trades if t.hours_before_resolution is not None and 0 < t.hours_before_resolution < 24
+                    t for t in trades
+                    if t.hours_before_resolution is not None and 0 < t.hours_before_resolution < get_settings().pre_resolution_hours
                 ]
                 if len(late_trades) > 5:
                     suspicion_factors.append(20)
@@ -266,7 +249,7 @@ class MarketWatchWorker:
         """Run a single market update cycle"""
         logger.info("Starting market watch update cycle...")
 
-        async with async_session_maker() as session:
+        async with get_db_session() as session:
             # Fetch markets from API
             markets_data = await self.fetch_active_markets()
 
@@ -317,13 +300,13 @@ async def get_market_watch_worker() -> MarketWatchWorker:
     """Get or create the singleton market watch worker instance"""
     global _market_watch_worker_instance
     if _market_watch_worker_instance is None:
-        _market_watch_worker_instance = MarketWatchWorker(poll_interval=300)
+        _market_watch_worker_instance = MarketWatchWorker(poll_interval=get_settings().resolution_poll_interval)
     return _market_watch_worker_instance
 
 
 async def main():
     """Main entry point"""
-    worker = MarketWatchWorker(poll_interval=300)  # 5 minutes
+    worker = MarketWatchWorker(poll_interval=get_settings().resolution_poll_interval)
     await worker.run()
 
 

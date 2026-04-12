@@ -39,6 +39,15 @@ export function getScoreBgColor(score: number): string {
   return 'bg-green-500/10 border-green-500/20';
 }
 
+export function formatVolume(value: number): string {
+  if (value >= 1_000_000) {
+    return `$${(value / 1_000_000).toFixed(1)}M`;
+  } else if (value >= 1_000) {
+    return `$${(value / 1_000).toFixed(0)}K`;
+  }
+  return formatCurrency(value);
+}
+
 export function formatRelativeTime(dateString: string): string {
   const date = new Date(dateString);
   const now = new Date();

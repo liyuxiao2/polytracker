@@ -181,14 +181,18 @@ async def main():
     # Check if worker has the parallel backfill method
     if hasattr(worker, "backfill_multiple_markets_parallel"):
         # Run parallel backfill
-        total_trades = await worker.backfill_multiple_markets_parallel(market_ids=tracked, max_pages_per_market=10000)
+        total_trades = await worker.backfill_multiple_markets_parallel(
+            market_ids=tracked, max_pages_per_market=settings.backfill_max_pages
+        )
     elif hasattr(worker, "backfill_historical_trades"):
         # Fallback to sequential backfill
         print("⚠️  Parallel backfill not available, running sequentially...")
         total_trades = 0
         for market_id in tracked:
             trades = await worker.backfill_historical_trades(
-                max_pages=10000, target_market_ids={market_id}, stop_on_duplicates=False
+                max_pages=settings.backfill_max_pages,
+                target_market_ids={market_id},
+                stop_on_duplicates=settings.backfill_stop_on_duplicates,
             )
             total_trades += trades
     else:

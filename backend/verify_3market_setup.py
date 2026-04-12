@@ -21,7 +21,7 @@ import logging
 from sqlalchemy import distinct, func, select
 
 from app.core.config import get_settings
-from app.core.database import Market, Trade, TraderProfile, async_session_maker
+from app.core.database import Market, Trade, TraderProfile, get_db_session
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ async def verify_setup():
 
     all_checks_passed = True
 
-    async with async_session_maker() as session:
+    async with get_db_session(readonly=True) as session:
         # =====================================================================
         # Check 1: Configuration
         # =====================================================================
@@ -115,6 +115,7 @@ async def verify_setup():
             sample = await session.execute(select(TraderProfile).limit(5))
             sample_profiles = sample.scalars().all()
 
+            sample_profiles_ok = True
             print("  Sample profiles (checking trade consistency):")
             for profile in sample_profiles:
                 # Check if this wallet has any trades from non-tracked markets
@@ -132,7 +133,8 @@ async def verify_setup():
                 else:
                     print(f"    ✅ Wallet {profile.wallet_address[:10]}... only has tracked market trades")
 
-            print("  ✅ PASS: Trader profiles verified")
+            if sample_profiles_ok:
+                print("  ✅ PASS: Trader profiles verified")
         else:
             print("  ⚠️  No profiles yet (will be created as trades are analyzed)")
 

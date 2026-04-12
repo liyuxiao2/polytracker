@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 from datetime import datetime
 
 from dotenv import load_dotenv
@@ -274,6 +275,20 @@ class TrackedMarket(Base):
     # Timestamps
     added_at = Column(DateTime, default=datetime.utcnow)
     last_snapshot_at = Column(DateTime, nullable=True)
+
+
+@asynccontextmanager
+async def get_db_session(readonly: bool = False):
+    """Async context manager for database sessions.
+    Commits on success (unless readonly), rolls back on error."""
+    async with async_session_maker() as session:
+        try:
+            yield session
+            if not readonly:
+                await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
 
 async def init_db():

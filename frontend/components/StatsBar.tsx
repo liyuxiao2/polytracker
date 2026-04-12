@@ -2,22 +2,11 @@
 
 import { Target, Trophy, DollarSign, TrendingUp } from 'lucide-react';
 import { DashboardStats } from '@/lib/types';
-import { formatNumber, formatCurrency } from '@/lib/utils';
+import { formatNumber, formatVolume } from '@/lib/utils';
 
 interface StatsBarProps {
   stats: DashboardStats;
 }
-
-export default function StatsBar({ stats }: StatsBarProps) {
-  // Format volume for display (e.g., $1.2M, $500K)
-  const formatVolume = (value: number) => {
-    if (value >= 1_000_000) {
-      return `$${(value / 1_000_000).toFixed(1)}M`;
-    } else if (value >= 1_000) {
-      return `$${(value / 1_000).toFixed(0)}K`;
-    }
-    return formatCurrency(value);
-  };
 
   const statCards = [
     {

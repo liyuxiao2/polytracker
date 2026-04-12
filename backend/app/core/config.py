@@ -36,6 +36,45 @@ class Settings(BaseSettings):
     # Detection thresholds
     z_score_threshold: float = 3.0
 
+    # Insider detection thresholds
+    off_hours_start: int = 2
+    off_hours_end: int = 6
+    insider_z_score_threshold: float = 4.5
+    large_trade_threshold: float = 10000
+    profit_threshold: float = 25000
+    odds_threshold: float = 0.1
+    avg_bet_deviation_multiplier: float = 4.0
+    min_flagged_trades: int = 3
+    market_concentration_threshold: float = 0.7
+    pre_resolution_hours: int = 24
+    longshot_win_rate_low: float = 0.25
+    longshot_win_rate_high: float = 0.6
+
+    # Resolution worker settings
+    resolution_poll_interval: int = 300
+    resolution_cache_ttl: int = 60
+
+    # Data ingestion settings
+    min_trade_size_filter: float = 0
+    trade_fetch_limit: int = 1000
+
+    # Snapshot / auto-discover settings
+    auto_discover_min_liquidity: int = 100000
+    auto_discover_max_markets: int = 4
+    backfill_max_days: int = 365
+
+    # Market category keywords for classification
+    category_keywords: dict = {
+        "NBA": ["nba", "basketball", "lakers", "warriors", "celtics", "mvp", "finals"],
+        "NFL": ["nfl", "football", "super bowl", "quarterback", "patriots", "cowboys"],
+        "Politics": ["president", "election", "senate", "congress", "democrat", "republican", "biden", "trump", "harris"],
+        "Crypto": ["bitcoin", "ethereum", "crypto", "btc", "eth", "solana", "doge", "blockchain"],
+        "Business": ["stock", "tesla", "apple", "amazon", "ipo", "merger", "ceo"],
+        "Entertainment": ["oscar", "emmy", "grammy", "movie", "album", "box office"],
+        "Science": ["covid", "vaccine", "mars", "spacex", "nasa", "climate"],
+        "Sports": ["world cup", "olympics", "soccer", "tennis", "formula 1", "ufc"],
+    }
+
     # Tracked markets (comma-separated condition_ids)
     tracked_market_ids: str = ""
 

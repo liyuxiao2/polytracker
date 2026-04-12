@@ -5,15 +5,13 @@ import { formatCurrency, shortenAddress, formatRelativeTime } from '@/lib/utils'
 import {
   TrendingUp,
   TrendingDown,
-  Trophy,
-  XCircle,
-  Clock,
   ChevronLeft,
   ChevronRight,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
 } from 'lucide-react';
+import { getStatusBadge } from '@/lib/badges';
 
 interface LiveFeedProps {
   trades: TrendingTrade[];
@@ -34,30 +32,6 @@ export default function LiveFeed({
   sortOrder,
   setSortOrder,
 }: LiveFeedProps) {
-  const getWinLossBadge = (isWin: boolean | null | undefined) => {
-    if (isWin === null || isWin === undefined) {
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-slate-600/50 text-slate-300">
-          <Clock className="h-3 w-3" />
-          Pending
-        </span>
-      );
-    }
-    if (isWin) {
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-          <Trophy className="h-3 w-3" />
-          Won
-        </span>
-      );
-    }
-    return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-500/20 text-red-400 border border-red-500/30">
-        <XCircle className="h-3 w-3" />
-        Lost
-      </span>
-    );
-  };
 
   return (
     <div className="bg-slate-800 border border-slate-700 rounded-lg overflow-hidden">
@@ -167,7 +141,7 @@ export default function LiveFeed({
                       {trade.outcome}
                     </span>
                   )}
-                  {getWinLossBadge(trade.is_win)}
+                  {getStatusBadge(trade.is_win)}
                   {trade.deviation_percentage > 0 ? (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-500/10 text-red-400">
                       <TrendingUp className="h-3 w-3" />+{trade.deviation_percentage.toFixed(0)}%

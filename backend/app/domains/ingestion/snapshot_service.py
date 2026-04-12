@@ -2,7 +2,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 
-from app.core.database import MarketSnapshot, PriceHistory, TrackedMarket, async_session_maker
+from app.core.database import MarketSnapshot, PriceHistory, TrackedMarket, get_db_session
 from app.domains.ingestion.polymarket_client import PolymarketClient
 from app.domains.markets.repository import MarketRepository
 
@@ -19,7 +19,7 @@ class SnapshotService:
 
         start_time = time.time()
 
-        async with async_session_maker() as session:
+        async with get_db_session() as session:
             tracked_markets = await self.market_repo.get_active_tracked_markets(session, max_markets)
 
             if not tracked_markets:
@@ -150,7 +150,7 @@ class SnapshotService:
         volume: float = 0,
         liquidity: float = 0,
     ) -> TrackedMarket:
-        async with async_session_maker() as session:
+        async with get_db_session() as session:
             market = await self.market_repo.get_tracked_market_by_id(session, market_id)
 
             if market:
@@ -315,7 +315,7 @@ class SnapshotService:
             return 0
 
         count = 0
-        async with async_session_maker() as session:
+        async with get_db_session() as session:
             for point in history:
                 ts = datetime.fromtimestamp(point["timestamp"])
                 price = point["price"]

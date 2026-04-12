@@ -12,6 +12,7 @@ from app.domains.ingestion.data_worker import get_worker
 from app.domains.ingestion.market_watch_worker import get_market_watch_worker
 from app.domains.ingestion.resolution_worker import get_resolution_worker
 from app.domains.ingestion.snapshot_worker import get_snapshot_worker
+from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +44,10 @@ async def lifespan(app: FastAPI):
         snapshot_worker = await get_snapshot_worker()
 
         # Auto-discover high-liquidity markets on startup
-        min_liquidity = float(os.getenv("AUTO_DISCOVER_MIN_LIQUIDITY", "100000"))
-        max_markets = int(os.getenv("AUTO_DISCOVER_MAX_MARKETS", "4"))
-        backfill_days = int(os.getenv("BACKFILL_MAX_DAYS", "365"))
+        settings = get_settings()
+        min_liquidity = float(settings.auto_discover_min_liquidity)
+        max_markets = settings.auto_discover_max_markets
+        backfill_days = settings.backfill_max_days
 
         logger.info(f"[App] Auto-discovering up to {max_markets} high-liquidity markets (min ${min_liquidity:,.0f})...")
         discovered = await snapshot_worker.auto_discover_markets(
@@ -112,7 +114,7 @@ app = FastAPI(
 )
 
 # CORS middleware for frontend
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000").split(",")
+cors_origins = get_settings().cors_origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,

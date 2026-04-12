@@ -1,12 +1,12 @@
 import asyncio
 import logging
-import os
 from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import Trade, TraderProfile, async_session_maker
+from app.core.config import get_settings
+from app.core.database import Trade, TraderProfile, get_db_session
 from app.domains.ingestion.polymarket_client import PolymarketClient
 
 logger = logging.getLogger(__name__)
@@ -19,11 +19,12 @@ class TradeResolutionWorker:
     """
 
     def __init__(self):
+        settings = get_settings()
         self.client = PolymarketClient()
-        self.poll_interval = int(os.getenv("RESOLUTION_POLL_INTERVAL", "300"))  # 5 min default
+        self.poll_interval = settings.resolution_poll_interval
         self.is_running = False
         self._market_cache: dict[str, dict] = {}  # Cache market resolution status
-        self._cache_ttl = 60  # Cache TTL in seconds
+        self._cache_ttl = settings.resolution_cache_ttl
 
     async def start(self):
         """
@@ -58,7 +59,7 @@ class TradeResolutionWorker:
         await self._update_unrealized_pnl()
 
         # Phase 2: Check for resolutions (existing logic)
-        async with async_session_maker() as session:
+        async with get_db_session() as session:
             # Get unresolved trades (is_win is NULL)
             result = await session.execute(
                 select(Trade)
@@ -126,7 +127,7 @@ class TradeResolutionWorker:
         Update unrealized P&L for all open positions (is_win IS NULL).
         Groups by market_id to minimize API calls.
         """
-        async with async_session_maker() as session:
+        async with get_db_session() as session:
             # Get open BUY positions (unresolved trades)
             # Skip SELL positions for now as short mechanics not fully implemented
             result = await session.execute(
@@ -343,7 +344,7 @@ class TradeResolutionWorker:
         sem = _asyncio.Semaphore(concurrency)
         stats = {"markets_checked": 0, "markets_resolved": 0, "trades_resolved": 0, "errors": 0}
 
-        async with async_session_maker() as session:
+        async with get_db_session(readonly=True) as session:
             # Get all distinct market IDs with unresolved trades
             result = await session.execute(select(Trade.market_id).where(Trade.is_win.is_(None)).distinct())
             unresolved_market_ids = [row[0] for row in result.all()]
@@ -385,7 +386,7 @@ class TradeResolutionWorker:
             return stats
 
         # Now resolve trades in DB, processing one market at a time
-        async with async_session_maker() as session:
+        async with get_db_session() as session:
             for market_id, resolved_outcome in resolved_markets.items():
                 result = await session.execute(
                     select(Trade).where(Trade.market_id == market_id).where(Trade.is_win.is_(None))

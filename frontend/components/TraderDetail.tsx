@@ -7,10 +7,8 @@ import {
   DollarSign,
   Activity,
   AlertCircle,
-  Trophy,
-  XCircle,
-  Clock,
 } from 'lucide-react';
+import { getStatusBadge } from '@/lib/badges';
 import {
   LineChart,
   Line,
@@ -55,30 +53,6 @@ export default function TraderDetail({ address, onClose }: TraderDetailProps) {
     fetchData();
   }, [address]);
 
-  const getOutcomeBadge = (isWin: boolean | null | undefined) => {
-    if (isWin === true) {
-      return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-          <Trophy className="h-3 w-3" />
-          Won
-        </span>
-      );
-    }
-    if (isWin === false) {
-      return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-500/20 text-red-400 border border-red-500/30">
-          <XCircle className="h-3 w-3" />
-          Lost
-        </span>
-      );
-    }
-    return (
-      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-600/50 text-slate-300">
-        <Clock className="h-3 w-3" />
-        Pending
-      </span>
-    );
-  };
 
   if (loading) {
     return (
@@ -187,7 +161,7 @@ export default function TraderDetail({ address, onClose }: TraderDetailProps) {
                       borderRadius: '8px',
                       color: '#fff',
                     }}
-                    formatter={(value: any) => [formatCurrency(value), 'Trade Size']}
+                    formatter={(value: number) => [formatCurrency(value), 'Trade Size']}
                   />
                   <ReferenceLine
                     y={profile.avg_bet_size}
@@ -200,7 +174,7 @@ export default function TraderDetail({ address, onClose }: TraderDetailProps) {
                     dataKey="tradeSize"
                     stroke="#3b82f6"
                     strokeWidth={2}
-                    dot={(props: any) => {
+                    dot={(props: { cx: number; cy: number; payload: { index: number; isFlagged: boolean } }) => {
                       const { cx, cy, payload } = props;
                       return (
                         <circle
@@ -290,7 +264,9 @@ export default function TraderDetail({ address, onClose }: TraderDetailProps) {
                       <td className="px-6 py-4 text-sm text-slate-300">
                         {trade.z_score?.toFixed(2) || 'N/A'}
                       </td>
-                      <td className="px-6 py-4">{getOutcomeBadge(trade.is_win)}</td>
+                      <td className="px-6 py-4">
+                        {getStatusBadge(trade.is_win)}
+                      </td>
                       <td className="px-6 py-4 text-sm text-slate-400">
                         {formatRelativeTime(trade.timestamp)}
                       </td>

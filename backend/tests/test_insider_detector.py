@@ -2,6 +2,7 @@ from datetime import datetime
 
 import numpy as np
 
+
 from app.core.database import Trade, TraderProfile
 from app.domains.ingestion.insider_detector import InsiderDetector
 

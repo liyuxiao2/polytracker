@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.database import Trade, async_session_maker
+from app.core.database import Trade, get_db_session
 from app.domains.ingestion.insider_detector import InsiderDetector
 from app.domains.ingestion.polymarket_client import PolymarketClient
 from app.domains.traders.repository import TraderRepository
@@ -18,15 +18,12 @@ logger = logging.getLogger(__name__)
 
 class DataIngestionService:
     def __init__(self):
+        self.settings = get_settings()
         self.trader_repo = TraderRepository()
         self.client = PolymarketClient()
         self.detector = InsiderDetector()
-        self.min_trade_size = float(os.getenv("MIN_TRADE_SIZE_USD", "0"))
-        self.trade_fetch_limit = int(os.getenv("TRADE_FETCH_LIMIT", "1000"))
-
-        # Add market filtering support
-
-        self.settings = get_settings()
+        self.min_trade_size = self.settings.min_trade_size_filter
+        self.trade_fetch_limit = self.settings.trade_fetch_limit
         self.tracked_markets = set(self.settings.tracked_market_id_list)
 
         if self.tracked_markets:
@@ -43,7 +40,7 @@ class DataIngestionService:
         new_trades = 0
         flagged_trades = 0
 
-        async with async_session_maker() as session:
+        async with get_db_session() as session:
             trades = await self.client.get_recent_trades(limit=self.trade_fetch_limit)
             fetch_time = time.time() - start_time
 
@@ -82,6 +79,7 @@ class DataIngestionService:
                 existing = await self.trader_repo.get_trade_by_transaction_hash(session, transaction_hash)
                 if existing:
                     return None
+
             market_slug = trade_data.get("event_slug", "")
             market_name = trade_data.get("market_name", "Unknown Market")
             timestamp = datetime.fromtimestamp(int(trade_data.get("timestamp", 0)) / 1000)
@@ -148,7 +146,7 @@ class DataIngestionService:
             if not activity:
                 return
 
-            async with async_session_maker() as session:
+            async with get_db_session() as session:
                 count = 0
                 for item in activity:
                     txn_hash = item.get("transactionHash")
@@ -236,7 +234,7 @@ class DataIngestionService:
             cutoff_date = datetime.utcnow() - timedelta(days=days_back)
             logger.info(f"[Backfill] Will stop at {cutoff_date.strftime('%Y-%m-%d')}")
 
-        async with async_session_maker() as session:
+        async with get_db_session() as session:
             for page in range(max_pages):
                 # Fetch page of trades
                 trades = await self.client.get_historical_trades(before_timestamp=oldest_timestamp, limit=500)
