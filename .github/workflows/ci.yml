@@ -45,7 +45,7 @@ jobs:
         run: ruff check --fix backend/
 
       - name: Prettier format (frontend)
-        run: cd frontend && npx prettier --write "**/*.{ts,tsx,js,jsx,json,css,md}"
+        run: cd frontend && npx -y prettier --write "**/*.{ts,tsx,js,jsx,json,css,md}"
 
       - name: ESLint fix (frontend)
         run: cd frontend && npx next lint --fix --dir .
@@ -96,7 +96,7 @@ jobs:
         run: cd frontend && npx next lint
 
       - name: Prettier check (frontend)
-        run: cd frontend && npx prettier --check "**/*.{ts,tsx,js,jsx,json,css,md}"
+        run: cd frontend && npx -y prettier --check "**/*.{ts,tsx,js,jsx,json,css,md}"
 
       - name: TypeScript type check (frontend)
         run: cd frontend && npx tsc --noEmit
