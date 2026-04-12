@@ -1,9 +1,10 @@
-import pytest
 from datetime import datetime
+
+import pytest
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from app.core.database import Trade, TraderProfile, Market
+from app.core.database import Market, Trade, TraderProfile
 
 
 class TestTradeModel:
@@ -108,9 +109,7 @@ class TestTraderProfileModel:
         session.add(profile)
         await session.commit()
 
-        result = await session.execute(
-            select(TraderProfile).where(TraderProfile.wallet_address == "0xtrader1")
-        )
+        result = await session.execute(select(TraderProfile).where(TraderProfile.wallet_address == "0xtrader1"))
         saved = result.scalar_one()
 
         assert saved.total_trades == 50
@@ -122,9 +121,7 @@ class TestTraderProfileModel:
         session.add(profile)
         await session.commit()
 
-        result = await session.execute(
-            select(TraderProfile).where(TraderProfile.wallet_address == "0xdefaults")
-        )
+        result = await session.execute(select(TraderProfile).where(TraderProfile.wallet_address == "0xdefaults"))
         saved = result.scalar_one()
 
         assert saved.total_trades == 0
@@ -155,9 +152,7 @@ class TestMarketModel:
         session.add(market)
         await session.commit()
 
-        result = await session.execute(
-            select(Market).where(Market.market_id == "cond_abc123")
-        )
+        result = await session.execute(select(Market).where(Market.market_id == "cond_abc123"))
         saved = result.scalar_one()
 
         assert saved.question == "Will it rain tomorrow?"
@@ -170,9 +165,7 @@ class TestMarketModel:
         session.add(market)
         await session.commit()
 
-        result = await session.execute(
-            select(Market).where(Market.market_id == "cond_defaults")
-        )
+        result = await session.execute(select(Market).where(Market.market_id == "cond_defaults"))
         saved = result.scalar_one()
 
         assert saved.is_resolved is False

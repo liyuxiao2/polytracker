@@ -1,16 +1,18 @@
+import asyncio
+import logging
+import os
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-import asyncio
+
 from app.api.router import api_router
 from app.core.database import init_db
 from app.domains.ingestion.data_worker import get_worker
-from app.domains.ingestion.resolution_worker import get_resolution_worker
 from app.domains.ingestion.market_watch_worker import get_market_watch_worker
+from app.domains.ingestion.resolution_worker import get_resolution_worker
 from app.domains.ingestion.snapshot_worker import get_snapshot_worker
 from app.core.config import get_settings
-import logging
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +51,7 @@ async def lifespan(app: FastAPI):
 
         logger.info(f"[App] Auto-discovering up to {max_markets} high-liquidity markets (min ${min_liquidity:,.0f})...")
         discovered = await snapshot_worker.auto_discover_markets(
-            min_liquidity=min_liquidity,
-            min_volume=100000,
-            limit=max_markets
+            min_liquidity=min_liquidity, min_volume=100000, limit=max_markets
         )
 
         # Backfill historical data for discovered markets (run in background)
@@ -59,23 +59,27 @@ async def lifespan(app: FastAPI):
             logger.info(f"[App] Starting backfill for {len(discovered)} markets ({backfill_days} days)...")
             for market in discovered:
                 if market.yes_token_id:
-                    asyncio.create_task(snapshot_worker.backfill_price_history(
-                        market_id=market.market_id,
-                        token_id=market.yes_token_id,
-                        outcome="YES",
-                        interval="1m",
-                        fidelity=1,
-                        days_back=backfill_days
-                    ))
+                    asyncio.create_task(
+                        snapshot_worker.backfill_price_history(
+                            market_id=market.market_id,
+                            token_id=market.yes_token_id,
+                            outcome="YES",
+                            interval="1m",
+                            fidelity=1,
+                            days_back=backfill_days,
+                        )
+                    )
                 if market.no_token_id:
-                    asyncio.create_task(snapshot_worker.backfill_price_history(
-                        market_id=market.market_id,
-                        token_id=market.no_token_id,
-                        outcome="NO",
-                        interval="1m",
-                        fidelity=1,
-                        days_back=backfill_days
-                    ))
+                    asyncio.create_task(
+                        snapshot_worker.backfill_price_history(
+                            market_id=market.market_id,
+                            token_id=market.no_token_id,
+                            outcome="NO",
+                            interval="1m",
+                            fidelity=1,
+                            days_back=backfill_days,
+                        )
+                    )
 
         snapshot_task = asyncio.create_task(snapshot_worker.start())
 
@@ -106,7 +110,7 @@ app = FastAPI(
     title="PolyEdge API",
     description="Real-time insider detection dashboard for Polymarket",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # CORS middleware for frontend
@@ -125,11 +129,7 @@ app.include_router(api_router, prefix="/api")
 
 @app.get("/")
 async def root():
-    return {
-        "message": "PolyEdge API",
-        "version": "1.0.0",
-        "docs": "/docs"
-    }
+    return {"message": "PolyEdge API", "version": "1.0.0", "docs": "/docs"}
 
 
 @app.get("/health")
@@ -138,16 +138,11 @@ async def health_check():
 
 
 if __name__ == "__main__":
-    import uvicorn
     import os
+
+    import uvicorn
 
     host = os.getenv("API_HOST", "0.0.0.0")
     port = int(os.getenv("API_PORT", "8000"))
 
-    uvicorn.run(
-        "app.main:app",
-        host=host,
-        port=port,
-        reload=True,
-        log_level="info"
-    )
+    uvicorn.run("app.main:app", host=host, port=port, reload=True, log_level="info")

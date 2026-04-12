@@ -25,8 +25,8 @@ class InsiderDetector:
         self.settings = self._anomaly.settings
 
     # ── Anomaly detection ──
-    async def calculate_z_score(self, wallet_address, trade_size, session):
-        return await self._anomaly.calculate_z_score(wallet_address, trade_size, session)
+    async def calculate_z_score(self, wallet_address, trade_size, session, tracked_markets=None):
+        return await self._anomaly.calculate_z_score(wallet_address, trade_size, session, tracked_markets=tracked_markets)
 
     async def get_trending_trades(self, session, min_size=10000, hours=24):
         return await self._anomaly.get_trending_trades(session, min_size, hours)
@@ -57,8 +57,8 @@ class InsiderDetector:
         return self._wallet.is_longshot_winner(longshot_win_rate, min_longshot_trades, threshold)
 
     # ── Profile updates ──
-    async def update_trader_profile(self, wallet_address, session):
-        return await self._profile.update_trader_profile(wallet_address, session)
+    async def update_trader_profile(self, wallet_address, session, tracked_markets=None):
+        return await self._profile.update_trader_profile(wallet_address, session, tracked_markets=tracked_markets)
 
     # ── Scoring (exposed for direct access if needed) ──
     def _calculate_insider_score(self, all_trades, flagged_trades, flagged_wins, win_rate, outcome_bias):

@@ -1,15 +1,18 @@
 """
 Market Watch Worker - Ingests and analyzes markets for suspicious activity and volatility
 """
+
 import asyncio
-from datetime import datetime, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_
-from app.core.database import Market, Trade, get_db_session
-from app.domains.ingestion.polymarket_client import PolymarketClient
-from app.core.config import get_settings
 import logging
 import statistics
+from datetime import datetime, timedelta
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import get_settings
+from app.core.database import Market, Trade, get_db_session
+from app.domains.ingestion.polymarket_client import PolymarketClient
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -32,6 +35,15 @@ class MarketWatchWorker:
         settings = get_settings()
         self.category_keywords = settings.category_keywords
 
+        # Market filtering
+        self.settings = get_settings()
+        self.tracked_markets = set(self.settings.tracked_market_id_list)
+
+        if self.tracked_markets:
+            logger.info(f"[MarketWatch] Tracking {len(self.tracked_markets)} specific markets")
+        else:
+            logger.info("[MarketWatch] Tracking ALL markets (no filter configured)")
+
     def categorize_market(self, question: str) -> str:
         """Categorize a market based on its question text"""
         if not question:
@@ -47,16 +59,42 @@ class MarketWatchWorker:
         return "Other"
 
     async def fetch_active_markets(self) -> list:
-        """Fetch active markets from Polymarket API"""
+        """
+        Fetch markets to monitor.
+        If tracked_markets is configured, only fetch those specific markets.
+        Otherwise, fetch all active markets.
+        """
         try:
-            # Fetch markets from CLOB API
-            all_markets = await self.client.get_markets_list(limit=200, closed=False)
+            if not self.tracked_markets:
+                # Original behavior: fetch all active markets
+                all_markets = await self.client.get_markets_list(limit=200, closed=False)
+                markets = [m for m in all_markets if not m.get("closed", False)]
+                logger.info(
+                    f"Fetched {len(markets)} active markets from Polymarket (filtered from {len(all_markets)} total)"
+                )
+                return markets
+            else:
+                # Fetch ONLY tracked markets (in parallel)
+                tracked_markets_list = list(self.tracked_markets)
+                tasks = [self.client.get_market_info(market_id) for market_id in tracked_markets_list]
+                market_infos = await asyncio.gather(*tasks)
 
-            # Filter out closed markets (API returns both closed and active despite parameter)
-            markets = [m for m in all_markets if not m.get("closed", False)]
+                markets = []
+                for market_id, market_info in zip(tracked_markets_list, market_infos):
+                    if market_info:
+                        # This assumes get_market_info is modified to return 'tokens'
+                        markets.append(
+                            {
+                                "conditionId": market_id,
+                                "question": market_info.get("question", ""),
+                                "closed": market_info.get("resolved", False),
+                                "tokens": market_info.get("tokens", []),
+                                "endDateIso": market_info.get("end_date", ""),
+                            }
+                        )
 
-            logger.info(f"Fetched {len(markets)} active markets from Polymarket (filtered from {len(all_markets)} total)")
-            return markets
+                logger.info(f"Fetched {len(markets)} tracked markets")
+                return markets
         except Exception as e:
             logger.error(f"Error fetching markets: {e}")
             return []
@@ -77,9 +115,7 @@ class MarketWatchWorker:
                 return
 
             # Check if market exists
-            result = await session.execute(
-                select(Market).where(Market.market_id == market_id)
-            )
+            result = await session.execute(select(Market).where(Market.market_id == market_id))
             market = result.scalar_one_or_none()
 
             question = market_data.get("question", "")
@@ -95,7 +131,7 @@ class MarketWatchWorker:
                     category=category,
                     is_resolved=market_data.get("closed", False),
                     end_date=self._parse_datetime(market_data.get("endDateIso") or market_data.get("end_date_iso")),
-                    last_checked=datetime.utcnow()
+                    last_checked=datetime.utcnow(),
                 )
                 session.add(market)
             else:
@@ -127,9 +163,7 @@ class MarketWatchWorker:
         """Calculate metrics for a market based on its trades"""
         try:
             # Get all trades for this market
-            result = await session.execute(
-                select(Trade).where(Trade.market_id == market.market_id)
-            )
+            result = await session.execute(select(Trade).where(Trade.market_id == market.market_id))
             trades = result.scalars().all()
 
             if not trades:
@@ -145,8 +179,7 @@ class MarketWatchWorker:
 
             # Calculate volatility (price movements in last 24h)
             recent_trades = [
-                t for t in trades
-                if t.timestamp and t.timestamp >= datetime.utcnow() - timedelta(hours=24)
+                t for t in trades if t.timestamp and t.timestamp >= datetime.utcnow() - timedelta(hours=24)
             ]
 
             if recent_trades and len(recent_trades) > 1:
@@ -208,7 +241,7 @@ class MarketWatchWorker:
         if not date_str:
             return None
         try:
-            return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+            return datetime.fromisoformat(date_str.replace("Z", "+00:00"))
         except:
             return None
 

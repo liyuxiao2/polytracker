@@ -17,15 +17,23 @@ class AnomalyDetector:
         self,
         wallet_address: str,
         trade_size: float,
-        session: AsyncSession
+        session: AsyncSession,
+        tracked_markets: set = None
     ) -> tuple[float, bool]:
-        """Calculate Z-score for a trade based on wallet's historical average."""
-        result = await session.execute(
+        """Calculate Z-score for a trade based on wallet's historical average.
+        Only considers trades from tracked markets if specified."""
+        query = (
             select(Trade.trade_size_usd)
             .where(Trade.wallet_address == wallet_address)
             .order_by(Trade.timestamp.desc())
             .limit(100)
         )
+
+        # Filter by tracked markets if provided
+        if tracked_markets:
+            query = query.where(Trade.market_id.in_(tracked_markets))
+
+        result = await session.execute(query)
         historical_trades = result.scalars().all()
 
         if len(historical_trades) < 3:

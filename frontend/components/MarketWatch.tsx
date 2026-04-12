@@ -1,36 +1,32 @@
-"use client";
+'use client';
 
-import { useState, useEffect } from "react";
-import { MarketWatchItem, Trade } from "@/lib/types";
-import { api } from "@/lib/api";
-import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
-import { getScoreColor, formatCurrency, shortenAddress } from "@/lib/utils";
-import { REFRESH_INTERVAL_MS, MARKETS_LIMIT } from "@/lib/constants";
+import { useState, useEffect } from 'react';
+import { MarketWatchItem, Trade } from '@/lib/types';
+import { api } from '@/lib/api';
+import { ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { getScoreColor, formatCurrency, shortenAddress } from '@/lib/utils';
+import { REFRESH_INTERVAL_MS, MARKETS_LIMIT } from '@/lib/constants';
 
 const CATEGORIES = [
-  "All",
-  "NBA",
-  "NFL",
-  "Politics",
-  "Crypto",
-  "Business",
-  "Entertainment",
-  "Science",
-  "Sports",
-  "Other",
+  'All',
+  'NBA',
+  'NFL',
+  'Politics',
+  'Crypto',
+  'Business',
+  'Entertainment',
+  'Science',
+  'Sports',
+  'Other',
 ];
 
-type SortBy =
-  | "suspicion_score"
-  | "volatility_score"
-  | "total_volume"
-  | "suspicious_trades_count";
+type SortBy = 'suspicion_score' | 'volatility_score' | 'total_volume' | 'suspicious_trades_count';
 
 export default function MarketWatch() {
   const [markets, setMarkets] = useState<MarketWatchItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedCategory, setSelectedCategory] = useState<string>("All");
-  const [sortBy, setSortBy] = useState<SortBy>("suspicion_score");
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [sortBy, setSortBy] = useState<SortBy>('suspicion_score');
 
   // Expansion state
   const [expandedMarketId, setExpandedMarketId] = useState<string | null>(null);
@@ -45,15 +41,10 @@ export default function MarketWatch() {
 
   const fetchMarkets = async () => {
     try {
-      const data = await api.getMarketWatch(
-        selectedCategory,
-        sortBy,
-        "desc",
-        MARKETS_LIMIT,
-      );
+      const data = await api.getMarketWatch(selectedCategory, sortBy, 'desc', MARKETS_LIMIT);
       setMarkets(data);
     } catch (error) {
-      console.error("Error fetching markets:", error);
+      console.error('Error fetching markets:', error);
     } finally {
       setLoading(false);
     }
@@ -72,30 +63,30 @@ export default function MarketWatch() {
       const trades = await api.getMarketTrades(marketId, 20);
       setMarketTrades(trades);
     } catch (error) {
-      console.error("Error fetching market trades:", error);
+      console.error('Error fetching market trades:', error);
     } finally {
       setLoadingTrades(false);
     }
   };
 
   const formatPercent = (value: number | undefined) => {
-    if (value === undefined || value === null) return "N/A";
-    return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
+    if (value === undefined || value === null) return 'N/A';
+    return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
   };
 
   const getCategoryColor = (category: string | undefined) => {
     const colors: { [key: string]: string } = {
-      NBA: "bg-orange-500/20 text-orange-300",
-      NFL: "bg-green-500/20 text-green-300",
-      Politics: "bg-blue-500/20 text-blue-300",
-      Crypto: "bg-purple-500/20 text-purple-300",
-      Business: "bg-cyan-500/20 text-cyan-300",
-      Entertainment: "bg-pink-500/20 text-pink-300",
-      Science: "bg-teal-500/20 text-teal-300",
-      Sports: "bg-yellow-500/20 text-yellow-300",
-      Other: "bg-slate-500/20 text-slate-300",
+      NBA: 'bg-orange-500/20 text-orange-300',
+      NFL: 'bg-green-500/20 text-green-300',
+      Politics: 'bg-blue-500/20 text-blue-300',
+      Crypto: 'bg-purple-500/20 text-purple-300',
+      Business: 'bg-cyan-500/20 text-cyan-300',
+      Entertainment: 'bg-pink-500/20 text-pink-300',
+      Science: 'bg-teal-500/20 text-teal-300',
+      Sports: 'bg-yellow-500/20 text-yellow-300',
+      Other: 'bg-slate-500/20 text-slate-300',
     };
-    return colors[category || "Other"] || colors["Other"];
+    return colors[category || 'Other'] || colors['Other'];
   };
 
   if (loading) {
@@ -120,8 +111,8 @@ export default function MarketWatch() {
                 onClick={() => setSelectedCategory(cat)}
                 className={`px-3 py-1 rounded-md text-sm transition-colors ${
                   selectedCategory === cat
-                    ? "bg-blue-500 text-white"
-                    : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                 }`}
               >
                 {cat}
@@ -160,14 +151,11 @@ export default function MarketWatch() {
               key={market.market_id}
               className={`bg-slate-800 border ${
                 expandedMarketId === market.market_id
-                  ? "border-blue-500/50"
-                  : "border-slate-700 hover:border-slate-600"
+                  ? 'border-blue-500/50'
+                  : 'border-slate-700 hover:border-slate-600'
               } rounded-lg transition-all duration-200 overflow-hidden`}
             >
-              <div
-                className="p-4 cursor-pointer"
-                onClick={() => handleExpand(market.market_id)}
-              >
+              <div className="p-4 cursor-pointer" onClick={() => handleExpand(market.market_id)}>
                 <div className="flex items-start justify-between gap-4">
                   {/* Left: Market Info */}
                   <div className="flex-1 min-w-0">
@@ -201,9 +189,7 @@ export default function MarketWatch() {
                   <div className="flex flex-col items-end gap-2">
                     {/* Suspicion Score */}
                     <div className="text-right">
-                      <div className="text-xs text-slate-400 mb-1">
-                        Suspicion
-                      </div>
+                      <div className="text-xs text-slate-400 mb-1">Suspicion</div>
                       <div
                         className={`text-2xl font-bold ${getScoreColor(market.suspicion_score)}`}
                       >
@@ -225,16 +211,14 @@ export default function MarketWatch() {
                       {market.price_change_24h !== undefined &&
                         market.price_change_24h !== null && (
                           <div className="text-right">
-                            <div className="text-xs text-slate-400">
-                              24h Change
-                            </div>
+                            <div className="text-xs text-slate-400">24h Change</div>
                             <div
                               className={`font-medium ${
                                 market.price_change_24h > 0
-                                  ? "text-green-400"
+                                  ? 'text-green-400'
                                   : market.price_change_24h < 0
-                                    ? "text-red-400"
-                                    : "text-slate-400"
+                                    ? 'text-red-400'
+                                    : 'text-slate-400'
                               }`}
                             >
                               {formatPercent(market.price_change_24h)}
@@ -247,7 +231,7 @@ export default function MarketWatch() {
                     {market.suspicious_trades_count > 0 && (
                       <div className="bg-red-500/20 text-red-400 px-2 py-1 rounded text-xs font-medium">
                         {market.suspicious_trades_count} suspicious trade
-                        {market.suspicious_trades_count !== 1 ? "s" : ""}
+                        {market.suspicious_trades_count !== 1 ? 's' : ''}
                       </div>
                     )}
 
@@ -269,9 +253,7 @@ export default function MarketWatch() {
               {expandedMarketId === market.market_id && (
                 <div className="border-t border-slate-700 bg-slate-900/50 p-4">
                   <div className="flex items-center justify-between mb-4">
-                    <h4 className="text-sm font-semibold text-slate-300">
-                      Recent Trades
-                    </h4>
+                    <h4 className="text-sm font-semibold text-slate-300">Recent Trades</h4>
                     <a
                       href={`https://polymarket.com/event/${market.market_slug}`}
                       target="_blank"
@@ -301,14 +283,9 @@ export default function MarketWatch() {
                         </thead>
                         <tbody className="divide-y divide-slate-800">
                           {marketTrades.map((trade) => (
-                            <tr
-                              key={trade.transaction_hash}
-                              className="hover:bg-slate-800/30"
-                            >
+                            <tr key={trade.transaction_hash} className="hover:bg-slate-800/30">
                               <td className="px-4 py-3 text-slate-300">
-                                {new Date(
-                                  trade.timestamp + "Z",
-                                ).toLocaleTimeString()}
+                                {new Date(trade.timestamp + 'Z').toLocaleTimeString()}
                               </td>
                               <td className="px-4 py-3">
                                 <span className="font-mono text-blue-400">
@@ -321,34 +298,32 @@ export default function MarketWatch() {
                               <td className="px-4 py-3">
                                 <span
                                   className={
-                                    trade.outcome === "YES"
-                                      ? "text-green-400"
-                                      : trade.outcome === "NO"
-                                        ? "text-red-400"
-                                        : "text-slate-400"
+                                    trade.outcome === 'YES'
+                                      ? 'text-green-400'
+                                      : trade.outcome === 'NO'
+                                        ? 'text-red-400'
+                                        : 'text-slate-400'
                                   }
                                 >
-                                  {trade.outcome || "-"}
+                                  {trade.outcome || '-'}
                                 </span>
                               </td>
                               <td className="px-4 py-3 text-right text-slate-300">
-                                {trade.price
-                                  ? `${(trade.price * 100).toFixed(1)}¢`
-                                  : "-"}
+                                {trade.price ? `${(trade.price * 100).toFixed(1)}¢` : '-'}
                               </td>
                               <td className="px-4 py-3 text-center">
                                 {trade.z_score ? (
                                   <span
                                     className={`px-2 py-0.5 rounded text-xs font-bold ${
                                       Math.abs(trade.z_score) > 3
-                                        ? "bg-red-500/20 text-red-400"
-                                        : "bg-slate-700 text-slate-400"
+                                        ? 'bg-red-500/20 text-red-400'
+                                        : 'bg-slate-700 text-slate-400'
                                     }`}
                                   >
                                     {trade.z_score.toFixed(1)}
                                   </span>
                                 ) : (
-                                  "-"
+                                  '-'
                                 )}
                               </td>
                             </tr>

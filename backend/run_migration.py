@@ -1,14 +1,15 @@
 """
 Database migration runner for PolyTracker
 """
+
 import asyncio
-import asyncpg
 import os
 from pathlib import Path
 
+import asyncpg
+
 DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://polytracker:polytracker_dev_password@localhost:5432/polytracker"
+    "DATABASE_URL", "postgresql+asyncpg://polytracker:polytracker_dev_password@localhost:5432/polytracker"
 )
 
 # Convert asyncpg URL (remove +asyncpg)
@@ -20,7 +21,7 @@ async def run_migration(migration_file: Path):
     print(f"Running migration: {migration_file.name}")
 
     # Read the SQL file
-    with open(migration_file, 'r') as f:
+    with open(migration_file) as f:
         sql = f.read()
 
     # Connect to database

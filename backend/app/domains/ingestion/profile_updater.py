@@ -17,14 +17,22 @@ class ProfileUpdater:
     async def update_trader_profile(
         self,
         wallet_address: str,
-        session: AsyncSession
+        session: AsyncSession,
+        tracked_markets: set = None
     ) -> TraderProfile:
-        """Update or create trader profile with latest statistics."""
-        result = await session.execute(
+        """Update or create trader profile with latest statistics.
+        Only includes trades from tracked markets if specified."""
+        query = (
             select(Trade)
             .where(Trade.wallet_address == wallet_address)
             .order_by(Trade.timestamp.asc())
         )
+
+        # Filter by tracked markets if provided
+        if tracked_markets:
+            query = query.where(Trade.market_id.in_(tracked_markets))
+
+        result = await session.execute(query)
         trades = list(result.scalars().all())
 
         if not trades:

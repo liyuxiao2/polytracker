@@ -23,7 +23,7 @@ export default function Dashboard() {
     total_resolved_trades: 0,
     avg_win_rate: 0,
     total_volume_24h: 0,
-    total_pnl_flagged: 0
+    total_pnl_flagged: 0,
   });
   const [traders, setTraders] = useState<TraderListItem[]>([]);
   const [trendingTrades, setTrendingTrades] = useState<TrendingTrade[]>([]);
@@ -99,9 +99,7 @@ export default function Dashboard() {
                 {activeView === 'market-watch' && 'Market Overview'}
                 {activeView === 'all-traders' && 'All Tracked Traders'}
               </h1>
-              <p className="text-slate-400">
-                Real-time monitoring of Polymarket trading activity
-              </p>
+              <p className="text-slate-400">Real-time monitoring of Polymarket trading activity</p>
             </div>
             <div className="flex items-center gap-4">
               <label className="flex items-center gap-2 text-sm text-slate-400">
@@ -132,8 +130,8 @@ export default function Dashboard() {
           {/* Content */}
           {activeView === 'live-feed' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <LiveFeed 
-                trades={trendingTrades} 
+              <LiveFeed
+                trades={trendingTrades}
                 page={tradesPage}
                 setPage={setTradesPage}
                 sortBy={tradesSortBy}
@@ -143,9 +141,7 @@ export default function Dashboard() {
               />
               <div>
                 <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
-                  <h2 className="text-lg font-semibold text-white mb-4">
-                    Top Suspicious Traders
-                  </h2>
+                  <h2 className="text-lg font-semibold text-white mb-4">Top Suspicious Traders</h2>
                   <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
                     {traders.slice(0, TRADERS_LIMIT).map((trader) => (
                       <button
@@ -184,17 +180,12 @@ export default function Dashboard() {
             />
           )}
 
-          {activeView === 'market-watch' && (
-            <MarketWatch />
-          )}
+          {activeView === 'market-watch' && <MarketWatch />}
         </div>
       </main>
 
       {selectedTrader && (
-        <TraderDetail
-          address={selectedTrader}
-          onClose={() => setSelectedTrader(null)}
-        />
+        <TraderDetail address={selectedTrader} onClose={() => setSelectedTrader(null)} />
       )}
     </div>
   );

@@ -1,32 +1,34 @@
-from typing import List, Optional
 from datetime import datetime
+
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.domains.markets.repository import MarketRepository
 from app.domains.traders.schema import (
-    MarketWatchItem,
-    TradeResponse,
-    TrackedMarketResponse,
-    TrackedMarketCreate,
+    BackfillRequest,
     DiscoverMarketsRequest,
     MarketSnapshotResponse,
+    MarketWatchItem,
     PriceHistoryResponse,
-    BackfillRequest
+    TrackedMarketCreate,
+    TrackedMarketResponse,
+    TradeResponse,
 )
+
 
 class MarketService:
     def __init__(self):
         self.market_repo = MarketRepository()
 
     async def get_market_watch(
-        self, session: AsyncSession, category: Optional[str], sort_by: str, sort_order: str, limit: int
-    ) -> List[MarketWatchItem]:
+        self, session: AsyncSession, category: str | None, sort_by: str, sort_order: str, limit: int
+    ) -> list[MarketWatchItem]:
         markets = await self.market_repo.get_market_watch(session, category, sort_by, sort_order, limit)
         return [MarketWatchItem.model_validate(market) for market in markets]
 
     async def get_market_trades(
         self, session: AsyncSession, market_id: str, page: int, limit: int
-    ) -> List[TradeResponse]:
+    ) -> list[TradeResponse]:
         offset = (page - 1) * limit
         trades = await self.market_repo.get_market_trades(session, market_id, offset, limit)
         return [TradeResponse.model_validate(trade) for trade in trades]
@@ -36,13 +38,14 @@ class MarketService:
         return {"market_id": market_id, "total_trades": count}
 
     async def get_tracked_markets(
-        self, session: AsyncSession, category: Optional[str], active_only: bool, limit: int
-    ) -> List[TrackedMarketResponse]:
+        self, session: AsyncSession, category: str | None, active_only: bool, limit: int
+    ) -> list[TrackedMarketResponse]:
         markets = await self.market_repo.get_tracked_markets(session, category, active_only, limit)
         return [TrackedMarketResponse.model_validate(m) for m in markets]
 
     async def add_tracked_market(self, market: TrackedMarketCreate) -> TrackedMarketResponse:
         from app.domains.ingestion.snapshot_worker import get_snapshot_worker
+
         worker = await get_snapshot_worker()
         tracked = await worker.add_tracked_market(
             market_id=market.market_id,
@@ -53,8 +56,9 @@ class MarketService:
         )
         return TrackedMarketResponse.model_validate(tracked)
 
-    async def discover_markets(self, request: DiscoverMarketsRequest) -> List[TrackedMarketResponse]:
+    async def discover_markets(self, request: DiscoverMarketsRequest) -> list[TrackedMarketResponse]:
         from app.domains.ingestion.snapshot_worker import get_snapshot_worker
+
         worker = await get_snapshot_worker()
         discovered = await worker.auto_discover_markets(
             categories=request.categories,
@@ -74,20 +78,34 @@ class MarketService:
         return {"message": f"Market {market_id} removed from tracking"}
 
     async def get_market_snapshots(
-        self, session: AsyncSession, market_id: str, start_time: Optional[datetime], end_time: Optional[datetime], limit: int
-    ) -> List[MarketSnapshotResponse]:
+        self,
+        session: AsyncSession,
+        market_id: str,
+        start_time: datetime | None,
+        end_time: datetime | None,
+        limit: int,
+    ) -> list[MarketSnapshotResponse]:
         snapshots = await self.market_repo.get_market_snapshots(session, market_id, start_time, end_time, limit)
         return [MarketSnapshotResponse.model_validate(s) for s in snapshots]
 
     async def get_price_history(
-        self, session: AsyncSession, market_id: str, outcome: Optional[str],
-        start_time: Optional[datetime], end_time: Optional[datetime], interval: Optional[str], limit: int
-    ) -> List[PriceHistoryResponse]:
-        history = await self.market_repo.get_price_history(session, market_id, outcome, start_time, end_time, interval, limit)
+        self,
+        session: AsyncSession,
+        market_id: str,
+        outcome: str | None,
+        start_time: datetime | None,
+        end_time: datetime | None,
+        interval: str | None,
+        limit: int,
+    ) -> list[PriceHistoryResponse]:
+        history = await self.market_repo.get_price_history(
+            session, market_id, outcome, start_time, end_time, interval, limit
+        )
         return [PriceHistoryResponse.model_validate(h) for h in history]
 
     async def backfill_price_history(self, request: BackfillRequest) -> dict:
         from app.domains.ingestion.snapshot_worker import get_snapshot_worker
+
         worker = await get_snapshot_worker()
         count = await worker.backfill_price_history(
             market_id=request.market_id,
@@ -105,9 +123,9 @@ class MarketService:
         }
 
     async def bulk_resolve_trades(self, concurrency: int) -> dict:
-        from app.domains.ingestion.resolution_worker import get_resolution_worker
-        from app.domains.ingestion.insider_detector import InsiderDetector
         from app.core.database import get_db_session
+        from app.domains.ingestion.insider_detector import InsiderDetector
+        from app.domains.ingestion.resolution_worker import get_resolution_worker
 
         worker = await get_resolution_worker()
         stats = await worker.bulk_resolve_all(concurrency=concurrency)
@@ -127,10 +145,10 @@ class MarketService:
 
         return stats
 
-    async def backfill_trades(self, max_pages: int, market_ids: Optional[List[str]]) -> dict:
+    async def backfill_trades(self, max_pages: int, market_ids: list[str] | None) -> dict:
         from app.domains.ingestion.data_worker import run_backfill
         # target_markets = set(market_ids) if market_ids else None
-        
+
         # run_backfill could take target_markets but route currently only does max_pages
         new_trades = await run_backfill(max_pages=max_pages)
 

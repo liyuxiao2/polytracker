@@ -1,13 +1,13 @@
 import asyncio
 import logging
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from datetime import datetime
+
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+
+from app.core.config import get_settings
 from app.core.database import Trade, TraderProfile, get_db_session
 from app.domains.ingestion.polymarket_client import PolymarketClient
-from app.core.config import get_settings
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ class TradeResolutionWorker:
         self.client = PolymarketClient()
         self.poll_interval = settings.resolution_poll_interval
         self.is_running = False
-        self._market_cache: Dict[str, dict] = {}  # Cache market resolution status
+        self._market_cache: dict[str, dict] = {}  # Cache market resolution status
         self._cache_ttl = settings.resolution_cache_ttl
 
     async def start(self):
@@ -76,7 +76,7 @@ class TradeResolutionWorker:
             logger.info(f"[ResolutionWorker] Checking {len(unresolved_trades)} unresolved trades")
 
             # Group trades by market_id to minimize API calls
-            trades_by_market: Dict[str, List[Trade]] = {}
+            trades_by_market: dict[str, list[Trade]] = {}
             for trade in unresolved_trades:
                 if trade.market_id not in trades_by_market:
                     trades_by_market[trade.market_id] = []
@@ -146,7 +146,7 @@ class TradeResolutionWorker:
             logger.info(f"[ResolutionWorker] Updating unrealized P&L for {len(open_trades)} open positions")
 
             # Group by market_id to minimize API calls
-            trades_by_market: Dict[str, List[Trade]] = {}
+            trades_by_market: dict[str, list[Trade]] = {}
             for trade in open_trades:
                 if trade.market_id not in trades_by_market:
                     trades_by_market[trade.market_id] = []
@@ -255,7 +255,7 @@ class TradeResolutionWorker:
 
         await session.commit()
 
-    async def _get_market_info_cached(self, market_id: str) -> Optional[dict]:
+    async def _get_market_info_cached(self, market_id: str) -> dict | None:
         """
         Get market info with caching to reduce API calls.
         Resolved markets are cached permanently (they never un-resolve).
@@ -305,19 +305,12 @@ class TradeResolutionWorker:
             return -trade.trade_size_usd
 
     async def _update_trader_stats(
-        self,
-        session: AsyncSession,
-        wallet_address: str,
-        is_win: bool,
-        pnl: float,
-        is_flagged: bool
+        self, session: AsyncSession, wallet_address: str, is_win: bool, pnl: float, is_flagged: bool
     ):
         """
         Update trader profile statistics when a trade is resolved.
         """
-        result = await session.execute(
-            select(TraderProfile).where(TraderProfile.wallet_address == wallet_address)
-        )
+        result = await session.execute(select(TraderProfile).where(TraderProfile.wallet_address == wallet_address))
         profile = result.scalar_one_or_none()
 
         if not profile:
@@ -337,7 +330,6 @@ class TradeResolutionWorker:
 
         profile.last_updated = datetime.utcnow()
 
-
     async def bulk_resolve_all(self, concurrency: int = 10) -> dict:
         """
         One-shot bulk resolution: fetch all distinct unresolved market IDs,
@@ -354,16 +346,12 @@ class TradeResolutionWorker:
 
         async with get_db_session(readonly=True) as session:
             # Get all distinct market IDs with unresolved trades
-            result = await session.execute(
-                select(Trade.market_id)
-                .where(Trade.is_win.is_(None))
-                .distinct()
-            )
+            result = await session.execute(select(Trade.market_id).where(Trade.is_win.is_(None)).distinct())
             unresolved_market_ids = [row[0] for row in result.all()]
             logger.info(f"[BulkResolve] Found {len(unresolved_market_ids)} markets with unresolved trades")
 
         # Look up each market's resolution status (with concurrency limit)
-        resolved_markets: Dict[str, str] = {}  # market_id -> resolved_outcome
+        resolved_markets: dict[str, str] = {}  # market_id -> resolved_outcome
 
         async def check_market(market_id: str):
             async with sem:
@@ -383,14 +371,16 @@ class TradeResolutionWorker:
         # Process in chunks to log progress
         chunk_size = 200
         for i in range(0, len(tasks), chunk_size):
-            chunk = tasks[i:i + chunk_size]
+            chunk = tasks[i : i + chunk_size]
             await _asyncio.gather(*chunk)
             logger.info(
                 f"[BulkResolve] Progress: {min(i + chunk_size, len(tasks))}/{len(tasks)} markets checked, "
                 f"{stats['markets_resolved']} resolved"
             )
 
-        logger.info(f"[BulkResolve] {stats['markets_resolved']} markets resolved out of {stats['markets_checked']} checked")
+        logger.info(
+            f"[BulkResolve] {stats['markets_resolved']} markets resolved out of {stats['markets_checked']} checked"
+        )
 
         if not resolved_markets:
             return stats
@@ -399,9 +389,7 @@ class TradeResolutionWorker:
         async with get_db_session() as session:
             for market_id, resolved_outcome in resolved_markets.items():
                 result = await session.execute(
-                    select(Trade)
-                    .where(Trade.market_id == market_id)
-                    .where(Trade.is_win.is_(None))
+                    select(Trade).where(Trade.market_id == market_id).where(Trade.is_win.is_(None))
                 )
                 trades = result.scalars().all()
 

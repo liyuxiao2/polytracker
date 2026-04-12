@@ -1,13 +1,13 @@
-import os
 import json
 import logging
-from typing import List, Optional
 from datetime import datetime, timedelta
-from app.core.database import get_db_session, MarketSnapshot, TrackedMarket, PriceHistory
-from app.domains.markets.repository import MarketRepository
+
+from app.core.database import MarketSnapshot, PriceHistory, TrackedMarket, get_db_session
 from app.domains.ingestion.polymarket_client import PolymarketClient
+from app.domains.markets.repository import MarketRepository
 
 logger = logging.getLogger(__name__)
+
 
 class SnapshotService:
     def __init__(self):
@@ -16,6 +16,7 @@ class SnapshotService:
 
     async def collect_snapshots(self, max_markets: int):
         import time
+
         start_time = time.time()
 
         async with get_db_session() as session:
@@ -44,9 +45,11 @@ class SnapshotService:
             await session.commit()
             elapsed = time.time() - start_time
             if snapshot_count > 0:
-                logger.info(f"[SnapshotService] Collected {snapshot_count} snapshots, {price_count} price points [{elapsed:.1f}s]")
+                logger.info(
+                    f"[SnapshotService] Collected {snapshot_count} snapshots, {price_count} price points [{elapsed:.1f}s]"
+                )
 
-    async def snapshot_market(self, market: TrackedMarket, session) -> Optional[MarketSnapshot]:
+    async def snapshot_market(self, market: TrackedMarket, session) -> MarketSnapshot | None:
         timestamp = datetime.utcnow()
         yes_book = None
         no_book = None
@@ -67,14 +70,18 @@ class SnapshotService:
         if yes_book:
             bids = yes_book.get("bids", [])
             asks = yes_book.get("asks", [])
-            if bids: yes_best_bid_size = bids[0].get("size")
-            if asks: yes_best_ask_size = asks[0].get("size")
+            if bids:
+                yes_best_bid_size = bids[0].get("size")
+            if asks:
+                yes_best_ask_size = asks[0].get("size")
 
         if no_book:
             bids = no_book.get("bids", [])
             asks = no_book.get("asks", [])
-            if bids: no_best_bid_size = bids[0].get("size")
-            if asks: no_best_ask_size = asks[0].get("size")
+            if bids:
+                no_best_bid_size = bids[0].get("size")
+            if asks:
+                no_best_ask_size = asks[0].get("size")
 
         snapshot = MarketSnapshot(
             timestamp=timestamp,
@@ -98,11 +105,13 @@ class SnapshotService:
             no_best_ask_size=no_best_ask_size,
             no_mid_price=no_book.get("mid_price") if no_book else None,
             total_liquidity=(
-                (yes_book.get("bid_liquidity", 0) or 0) +
-                (yes_book.get("ask_liquidity", 0) or 0) +
-                (no_book.get("bid_liquidity", 0) or 0) +
-                (no_book.get("ask_liquidity", 0) or 0)
-            ) if yes_book or no_book else None,
+                (yes_book.get("bid_liquidity", 0) or 0)
+                + (yes_book.get("ask_liquidity", 0) or 0)
+                + (no_book.get("bid_liquidity", 0) or 0)
+                + (no_book.get("ask_liquidity", 0) or 0)
+            )
+            if yes_book or no_book
+            else None,
         )
 
         session.add(snapshot)
@@ -132,18 +141,28 @@ class SnapshotService:
         return count
 
     async def add_tracked_market(
-        self, market_id: str, question: str = None, category: str = None,
-        yes_token_id: str = None, no_token_id: str = None, volume: float = 0, liquidity: float = 0
+        self,
+        market_id: str,
+        question: str = None,
+        category: str = None,
+        yes_token_id: str = None,
+        no_token_id: str = None,
+        volume: float = 0,
+        liquidity: float = 0,
     ) -> TrackedMarket:
         async with get_db_session() as session:
             market = await self.market_repo.get_tracked_market_by_id(session, market_id)
 
             if market:
                 market.is_active = True
-                if yes_token_id: market.yes_token_id = yes_token_id
-                if no_token_id: market.no_token_id = no_token_id
-                if question: market.question = question
-                if category: market.category = category
+                if yes_token_id:
+                    market.yes_token_id = yes_token_id
+                if no_token_id:
+                    market.no_token_id = no_token_id
+                if question:
+                    market.question = question
+                if category:
+                    market.category = category
             else:
                 market = TrackedMarket(
                     market_id=market_id,
@@ -161,10 +180,11 @@ class SnapshotService:
             return market
 
     async def auto_discover_markets(
-        self, categories: List[str] = None, min_liquidity: float = 10000,
-        min_volume: float = 50000, limit: int = 50
-    ) -> List[TrackedMarket]:
-        logger.info(f"[SnapshotService] Auto-discovering markets (categories={categories}, min_liquidity=${min_liquidity:,.0f})")
+        self, categories: list[str] = None, min_liquidity: float = 10000, min_volume: float = 50000, limit: int = 50
+    ) -> list[TrackedMarket]:
+        logger.info(
+            f"[SnapshotService] Auto-discovering markets (categories={categories}, min_liquidity=${min_liquidity:,.0f})"
+        )
         discovered = []
         offset = 0
         page_size = 100
@@ -213,15 +233,43 @@ class SnapshotService:
                             category_match = True
                             detected_category = cat
                             break
-                        if cat_lower == "politics" and any(kw in question for kw in ["election", "president", "congress", "senate", "trump", "biden", "democrat", "republican"]):
+                        if cat_lower == "politics" and any(
+                            kw in question
+                            for kw in [
+                                "election",
+                                "president",
+                                "congress",
+                                "senate",
+                                "trump",
+                                "biden",
+                                "democrat",
+                                "republican",
+                            ]
+                        ):
                             category_match = True
                             detected_category = "politics"
                             break
-                        if cat_lower == "sports" and any(kw in question for kw in ["nba", "nfl", "mlb", "nhl", "super bowl", "playoffs", "championship", "game", "win", "score"]):
+                        if cat_lower == "sports" and any(
+                            kw in question
+                            for kw in [
+                                "nba",
+                                "nfl",
+                                "mlb",
+                                "nhl",
+                                "super bowl",
+                                "playoffs",
+                                "championship",
+                                "game",
+                                "win",
+                                "score",
+                            ]
+                        ):
                             category_match = True
                             detected_category = "sports"
                             break
-                        if cat_lower == "crypto" and any(kw in question for kw in ["bitcoin", "btc", "ethereum", "eth", "crypto", "price"]):
+                        if cat_lower == "crypto" and any(
+                            kw in question for kw in ["bitcoin", "btc", "ethereum", "eth", "crypto", "price"]
+                        ):
                             category_match = True
                             detected_category = "crypto"
                             break
@@ -251,17 +299,16 @@ class SnapshotService:
         logger.info(f"[SnapshotService] Discovered {len(discovered)} markets to track")
         return discovered
 
-    async def backfill_price_history(self, market_id: str, token_id: str, outcome: str, interval: str = "1h", fidelity: int = 60, days_back: int = 30) -> int:
+    async def backfill_price_history(
+        self, market_id: str, token_id: str, outcome: str, interval: str = "1h", fidelity: int = 60, days_back: int = 30
+    ) -> int:
         logger.info(f"[SnapshotService] Backfilling {days_back} days of {interval} data for {market_id} ({outcome})")
 
         end_ts = int(datetime.utcnow().timestamp())
         start_ts = int((datetime.utcnow() - timedelta(days=days_back)).timestamp())
 
         history = await self.client.get_price_history(
-            token_id=token_id,
-            start_ts=start_ts,
-            end_ts=end_ts,
-            fidelity=fidelity
+            token_id=token_id, start_ts=start_ts, end_ts=end_ts, fidelity=fidelity
         )
 
         if not history:
