@@ -10,6 +10,8 @@ import MarketWatch from '@/components/MarketWatch';
 import { api } from '@/lib/api';
 import { TraderListItem, TrendingTrade, DashboardStats } from '@/lib/types';
 import { RefreshCw } from 'lucide-react';
+import { REFRESH_INTERVAL_MS, TRADERS_LIMIT } from '@/lib/constants';
+import { shortenAddress } from '@/lib/utils';
 
 export default function Dashboard() {
   const [activeView, setActiveView] = useState('live-feed');
@@ -61,7 +63,7 @@ export default function Dashboard() {
 
     const interval = setInterval(() => {
       fetchData();
-    }, 30000); // Refresh every 30 seconds
+    }, REFRESH_INTERVAL_MS);
 
     return () => clearInterval(interval);
   }, [autoRefresh, fetchData]);
@@ -145,7 +147,7 @@ export default function Dashboard() {
                     Top Suspicious Traders
                   </h2>
                   <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
-                    {traders.slice(0, 50).map((trader) => (
+                    {traders.slice(0, TRADERS_LIMIT).map((trader) => (
                       <button
                         key={trader.wallet_address}
                         onClick={() => setSelectedTrader(trader.wallet_address)}
@@ -153,7 +155,7 @@ export default function Dashboard() {
                       >
                         <div className="flex items-center justify-between">
                           <code className="text-sm text-blue-400 font-mono">
-                            {trader.wallet_address.slice(0, 10)}...{trader.wallet_address.slice(-8)}
+                            {shortenAddress(trader.wallet_address, 10)}
                           </code>
                           <span className="text-lg font-bold text-red-400">
                             {trader.insider_score.toFixed(1)}

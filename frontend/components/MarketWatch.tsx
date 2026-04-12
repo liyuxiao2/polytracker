@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import { MarketWatchItem, Trade } from "@/lib/types";
 import { api } from "@/lib/api";
 import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
-import { getScoreColor } from "@/lib/utils";
+import { getScoreColor, formatCurrency, shortenAddress } from "@/lib/utils";
+import { REFRESH_INTERVAL_MS, MARKETS_LIMIT } from "@/lib/constants";
 
 const CATEGORIES = [
   "All",
@@ -38,7 +39,7 @@ export default function MarketWatch() {
 
   useEffect(() => {
     fetchMarkets();
-    const interval = setInterval(fetchMarkets, 30000); // Refresh every 30 seconds
+    const interval = setInterval(fetchMarkets, REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [selectedCategory, sortBy]);
 
@@ -48,7 +49,7 @@ export default function MarketWatch() {
         selectedCategory,
         sortBy,
         "desc",
-        50,
+        MARKETS_LIMIT,
       );
       setMarkets(data);
     } catch (error) {
@@ -75,15 +76,6 @@ export default function MarketWatch() {
     } finally {
       setLoadingTrades(false);
     }
-  };
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
   };
 
   const formatPercent = (value: number | undefined) => {
@@ -320,7 +312,7 @@ export default function MarketWatch() {
                               </td>
                               <td className="px-4 py-3">
                                 <span className="font-mono text-blue-400">
-                                  {trade.wallet_address.slice(0, 6)}...
+                                  {shortenAddress(trade.wallet_address)}
                                 </span>
                               </td>
                               <td className="px-4 py-3 text-right font-medium text-slate-200">
