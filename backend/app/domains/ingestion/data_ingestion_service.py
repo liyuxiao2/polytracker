@@ -21,15 +21,14 @@ class DataIngestionService:
         self.min_trade_size = float(os.getenv("MIN_TRADE_SIZE_USD", "0"))
         self.trade_fetch_limit = int(os.getenv("TRADE_FETCH_LIMIT", "1000"))
 
-        # Add market filtering support
-        from app.core.config import get_settings
+        # Load tracked markets from configuration
         self.settings = get_settings()
         self.tracked_markets = set(self.settings.tracked_market_id_list)
 
         if self.tracked_markets:
-            logger.info(f"[Worker] Tracking {len(self.tracked_markets)} specific markets: {list(self.tracked_markets)}")
+            logger.info(f"[Ingestion] Tracking {len(self.tracked_markets)} specific markets: {list(self.tracked_markets)}")
         else:
-            logger.info(f"[Worker] Tracking ALL markets (no filter configured)")
+            logger.info(f"[Ingestion] Tracking ALL markets (no filter configured)")
 
     async def process_trades(self) -> dict:
         import time
@@ -74,7 +73,6 @@ class DataIngestionService:
                 existing = await self.trader_repo.get_trade_by_transaction_hash(session, transaction_hash)
                 if existing:
                     return None
-
             market_slug = trade_data.get("event_slug", "")
             market_name = trade_data.get("market_name", "Unknown Market")
             timestamp = datetime.fromtimestamp(int(trade_data.get("timestamp", 0)) / 1000)
@@ -88,7 +86,7 @@ class DataIngestionService:
 
             z_score, is_flagged = await self.detector.calculate_z_score(
                 wallet_address, trade_size_usd, session,
-                tracked_markets=self.tracked_markets if self.tracked_markets else None
+                tracked_markets=self.tracked_markets
             )
 
             flag_reason = None
@@ -122,7 +120,7 @@ class DataIngestionService:
             if is_flagged:
                 profile = await self.detector.update_trader_profile(
                     wallet_address, session,
-                    tracked_markets=self.tracked_markets if self.tracked_markets else None
+                    tracked_markets=self.tracked_markets
                 )
                 if profile and profile.total_trades < 50:
                     asyncio.create_task(self.backfill_trader_history(wallet_address))
@@ -186,7 +184,7 @@ class DataIngestionService:
                     logger.info(f"[Ingestion] Backfilled {count} trades for {wallet_address}")
                     await self.detector.update_trader_profile(
                         wallet_address, session,
-                        tracked_markets=self.tracked_markets if self.tracked_markets else None
+                        tracked_markets=self.tracked_markets
                     )
                     
         except Exception as e:
