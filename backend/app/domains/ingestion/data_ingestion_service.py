@@ -30,7 +30,9 @@ class DataIngestionService:
         self.tracked_markets = set(self.settings.tracked_market_id_list)
 
         if self.tracked_markets:
-            logger.info(f"[Ingestion] Tracking {len(self.tracked_markets)} specific markets: {list(self.tracked_markets)}")
+            logger.info(
+                f"[Ingestion] Tracking {len(self.tracked_markets)} specific markets: {list(self.tracked_markets)}"
+            )
         else:
             logger.info("[Worker] Tracking ALL markets (no filter configured)")
 
@@ -219,7 +221,6 @@ class DataIngestionService:
             Total number of new trades inserted
         """
         logger.info(f"[Backfill] Starting optimized backfill (max {max_pages} pages)...")
-
 
         settings = get_settings()
         rate_limit_delay = settings.backfill_rate_limit_delay

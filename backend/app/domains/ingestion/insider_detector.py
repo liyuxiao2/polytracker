@@ -71,9 +71,7 @@ class InsiderDetector:
 
         return float(z_score), is_anomaly
 
-    async def evaluate_trade_for_insider_activity(
-        self, trade: Trade, session: AsyncSession
-    ) -> tuple[bool, str | None]:
+    async def evaluate_trade_for_insider_activity(self, trade: Trade, session: AsyncSession) -> tuple[bool, str | None]:
         """
         Evaluate a resolved trade for insider activity indicators.
         Called after market resolution to flag suspicious winning trades.

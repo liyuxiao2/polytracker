@@ -142,9 +142,7 @@ async def verify_setup():
         print("\n[5/5] Historical Data Range")
 
         if total_count > 0:
-            min_max_result = await session.execute(
-                select(func.min(Trade.timestamp), func.max(Trade.timestamp))
-            )
+            min_max_result = await session.execute(select(func.min(Trade.timestamp), func.max(Trade.timestamp)))
             oldest_date, newest_date = min_max_result.one()
 
             if oldest_date and newest_date:
