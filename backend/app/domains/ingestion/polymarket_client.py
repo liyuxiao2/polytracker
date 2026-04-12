@@ -145,6 +145,9 @@ class PolymarketClient:
             return []
 
     async def search_markets(
+        self,
+        query: str = "",
+        limit: int = 500,
         self, 
         query: str = "", 
         limit: int = 500, 
@@ -162,6 +165,7 @@ class PolymarketClient:
             for closed_status in statuses:
                 for i in range(max_pages):
                     params = {
+                        "limit": limit,
                         "limit": limit, 
                         "offset": i * limit,
                         "closed": "true" if closed_status else "false"
@@ -172,6 +176,7 @@ class PolymarketClient:
                     )
                     response.raise_for_status()
                     all_markets = response.json()
+
                     
                     if not all_markets:
                         break
