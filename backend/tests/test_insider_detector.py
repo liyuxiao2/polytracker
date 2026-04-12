@@ -1,6 +1,6 @@
-import pytest
+from datetime import datetime
+
 import numpy as np
-from datetime import datetime, timedelta
 
 from app.core.database import Trade, TraderProfile
 from app.domains.ingestion.insider_detector import InsiderDetector
@@ -14,13 +14,15 @@ class TestZScoreCalculation:
 
         # Create history of consistent $1000 trades (mean=1000, std~0)
         for i in range(10):
-            session.add(Trade(
-                wallet_address=wallet,
-                market_id="m1",
-                market_name="Test",
-                trade_size_usd=1000.0,
-                timestamp=datetime(2025, 1, 1, i),
-            ))
+            session.add(
+                Trade(
+                    wallet_address=wallet,
+                    market_id="m1",
+                    market_name="Test",
+                    trade_size_usd=1000.0,
+                    timestamp=datetime(2025, 1, 1, i),
+                )
+            )
         await session.commit()
 
         # A $1000 trade should have z_score ~0
@@ -36,13 +38,15 @@ class TestZScoreCalculation:
         # Create varied history
         sizes = [100, 150, 120, 130, 110, 140, 125, 135, 115, 145]
         for i, size in enumerate(sizes):
-            session.add(Trade(
-                wallet_address=wallet,
-                market_id="m1",
-                market_name="Test",
-                trade_size_usd=float(size),
-                timestamp=datetime(2025, 1, 1, i),
-            ))
+            session.add(
+                Trade(
+                    wallet_address=wallet,
+                    market_id="m1",
+                    market_name="Test",
+                    trade_size_usd=float(size),
+                    timestamp=datetime(2025, 1, 1, i),
+                )
+            )
         await session.commit()
 
         mean = np.mean(sizes)
@@ -61,13 +65,15 @@ class TestZScoreCalculation:
 
         # Only 2 trades - not enough for z-score
         for i in range(2):
-            session.add(Trade(
-                wallet_address=wallet,
-                market_id="m1",
-                market_name="Test",
-                trade_size_usd=500.0,
-                timestamp=datetime(2025, 1, 1, i),
-            ))
+            session.add(
+                Trade(
+                    wallet_address=wallet,
+                    market_id="m1",
+                    market_name="Test",
+                    trade_size_usd=500.0,
+                    timestamp=datetime(2025, 1, 1, i),
+                )
+            )
         await session.commit()
 
         z_score, is_anomaly = await detector.calculate_z_score(wallet, 500.0, session)
@@ -87,13 +93,15 @@ class TestZScoreCalculation:
 
         # All trades are exactly $500
         for i in range(5):
-            session.add(Trade(
-                wallet_address=wallet,
-                market_id="m1",
-                market_name="Test",
-                trade_size_usd=500.0,
-                timestamp=datetime(2025, 1, 1, i),
-            ))
+            session.add(
+                Trade(
+                    wallet_address=wallet,
+                    market_id="m1",
+                    market_name="Test",
+                    trade_size_usd=500.0,
+                    timestamp=datetime(2025, 1, 1, i),
+                )
+            )
         await session.commit()
 
         z_score, is_anomaly = await detector.calculate_z_score(wallet, 500.0, session)
@@ -184,15 +192,17 @@ class TestUpdateTraderProfile:
 
         # Create some trades
         for i in range(5):
-            session.add(Trade(
-                wallet_address=wallet,
-                market_id=f"m{i}",
-                market_name=f"Market {i}",
-                trade_size_usd=1000.0 * (i + 1),
-                timestamp=datetime(2025, 1, 1, i),
-                outcome="YES" if i % 2 == 0 else "NO",
-                side="BUY",
-            ))
+            session.add(
+                Trade(
+                    wallet_address=wallet,
+                    market_id=f"m{i}",
+                    market_name=f"Market {i}",
+                    trade_size_usd=1000.0 * (i + 1),
+                    timestamp=datetime(2025, 1, 1, i),
+                    outcome="YES" if i % 2 == 0 else "NO",
+                    side="BUY",
+                )
+            )
         await session.commit()
 
         profile = await detector.update_trader_profile(wallet, session)
@@ -223,14 +233,16 @@ class TestUpdateTraderProfile:
 
         # Create trades
         for i in range(5):
-            session.add(Trade(
-                wallet_address=wallet,
-                market_id=f"m{i}",
-                market_name=f"Market {i}",
-                trade_size_usd=1000.0,
-                timestamp=datetime(2025, 1, 1, i),
-                side="BUY",
-            ))
+            session.add(
+                Trade(
+                    wallet_address=wallet,
+                    market_id=f"m{i}",
+                    market_name=f"Market {i}",
+                    trade_size_usd=1000.0,
+                    timestamp=datetime(2025, 1, 1, i),
+                    side="BUY",
+                )
+            )
         await session.commit()
 
         updated = await detector.update_trader_profile(wallet, session)

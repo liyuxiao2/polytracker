@@ -14,14 +14,18 @@ Checks:
   4. Trader profiles (calculated from tracked markets only)
   5. Historical data range (backfill completeness)
 """
+
 import asyncio
-from app.core.database import async_session_maker, Trade, Market, TraderProfile
-from sqlalchemy import select, func, distinct
-from app.core.config import get_settings
 import logging
+
+from sqlalchemy import distinct, func, select
+
+from app.core.config import get_settings
+from app.core.database import Market, Trade, TraderProfile, async_session_maker
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 async def verify_setup():
     """Verify 3-market system is correctly configured"""
@@ -38,28 +42,24 @@ async def verify_setup():
         # =====================================================================
         # Check 1: Configuration
         # =====================================================================
-        print(f"\n[1/5] Configuration")
+        print("\n[1/5] Configuration")
         print(f"  Tracked markets: {len(tracked_markets)}")
 
         if len(tracked_markets) != 3:
             print(f"  ❌ FAILED: Expected 3 markets, found {len(tracked_markets)}")
             all_checks_passed = False
         else:
-            print(f"  ✅ PASS: Correct number of markets configured")
+            print("  ✅ PASS: Correct number of markets configured")
 
         # =====================================================================
         # Check 2: Trade Data
         # =====================================================================
-        print(f"\n[2/5] Trade Data")
+        print("\n[2/5] Trade Data")
 
-        total_trades = await session.execute(
-            select(func.count(Trade.transaction_hash))
-        )
+        total_trades = await session.execute(select(func.count(Trade.transaction_hash)))
         total_count = total_trades.scalar()
 
-        unique_markets = await session.execute(
-            select(distinct(Trade.market_id))
-        )
+        unique_markets = await session.execute(select(distinct(Trade.market_id)))
         market_ids = unique_markets.scalars().all()
 
         print(f"  Total trades: {total_count:,}")
@@ -74,22 +74,20 @@ async def verify_setup():
                 print(f"    - {m}")
             all_checks_passed = False
         else:
-            print(f"  ✅ PASS: All trades are from tracked markets only")
+            print("  ✅ PASS: All trades are from tracked markets only")
 
         # =====================================================================
         # Check 3: Market Metadata
         # =====================================================================
-        print(f"\n[3/5] Market Metadata")
+        print("\n[3/5] Market Metadata")
 
-        markets = await session.execute(
-            select(Market).where(Market.market_id.in_(tracked_markets))
-        )
+        markets = await session.execute(select(Market).where(Market.market_id.in_(tracked_markets)))
         market_records = markets.scalars().all()
 
         print(f"  Markets with metadata: {len(market_records)}")
 
         if len(market_records) < len(tracked_markets):
-            print(f"  ⚠️  WARNING: Some tracked markets missing metadata")
+            print("  ⚠️  WARNING: Some tracked markets missing metadata")
             all_checks_passed = False
 
         for market in market_records:
@@ -100,33 +98,28 @@ async def verify_setup():
             print(f"      Status: {'Resolved' if market.is_resolved else 'Active'}")
 
         if len(market_records) == len(tracked_markets):
-            print(f"  ✅ PASS: All tracked markets have metadata")
+            print("  ✅ PASS: All tracked markets have metadata")
 
         # =====================================================================
         # Check 4: Trader Profiles
         # =====================================================================
-        print(f"\n[4/5] Trader Profiles")
+        print("\n[4/5] Trader Profiles")
 
-        profile_count = await session.execute(
-            select(func.count(TraderProfile.id))
-        )
+        profile_count = await session.execute(select(func.count(TraderProfile.id)))
         profiles = profile_count.scalar()
 
         print(f"  Total profiles: {profiles:,}")
 
         if profiles > 0:
             # Sample a few profiles to verify they only contain tracked market trades
-            sample = await session.execute(
-                select(TraderProfile).limit(5)
-            )
+            sample = await session.execute(select(TraderProfile).limit(5))
             sample_profiles = sample.scalars().all()
 
-            print(f"  Sample profiles (checking trade consistency):")
+            print("  Sample profiles (checking trade consistency):")
             for profile in sample_profiles:
                 # Check if this wallet has any trades from non-tracked markets
                 wallet_markets = await session.execute(
-                    select(distinct(Trade.market_id))
-                    .where(Trade.wallet_address == profile.wallet_address)
+                    select(distinct(Trade.market_id)).where(Trade.wallet_address == profile.wallet_address)
                 )
                 wallet_market_ids = wallet_markets.scalars().all()
 
@@ -138,14 +131,14 @@ async def verify_setup():
                 else:
                     print(f"    ✅ Wallet {profile.wallet_address[:10]}... only has tracked market trades")
 
-            print(f"  ✅ PASS: Trader profiles verified")
+            print("  ✅ PASS: Trader profiles verified")
         else:
-            print(f"  ⚠️  No profiles yet (will be created as trades are analyzed)")
+            print("  ⚠️  No profiles yet (will be created as trades are analyzed)")
 
         # =====================================================================
         # Check 5: Historical Data Range
         # =====================================================================
-        print(f"\n[5/5] Historical Data Range")
+        print("\n[5/5] Historical Data Range")
 
         if total_count > 0:
             oldest = await session.execute(select(func.min(Trade.timestamp)))
@@ -166,15 +159,15 @@ async def verify_setup():
                 else:
                     print(f"  ⚠️  Limited historical data ({days} days)")
             else:
-                print(f"  ⚠️  Could not determine date range")
+                print("  ⚠️  Could not determine date range")
         else:
-            print(f"  ⚠️  No trades in database yet")
+            print("  ⚠️  No trades in database yet")
             all_checks_passed = False
 
         # =====================================================================
         # Final Summary
         # =====================================================================
-        print(f"\n" + "=" * 70)
+        print("\n" + "=" * 70)
 
         if all_checks_passed and total_count > 0:
             print("✅ All checks passed! System is correctly configured.")
@@ -186,6 +179,7 @@ async def verify_setup():
             print("   You may need to re-run the setup script.")
 
         print("=" * 70)
+
 
 if __name__ == "__main__":
     asyncio.run(verify_setup())

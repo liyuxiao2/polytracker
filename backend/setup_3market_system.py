@@ -16,14 +16,16 @@ Usage:
 
 Estimated time: 30-90 minutes depending on data volume
 """
+
 import asyncio
-import sys
-import os
 import logging
+import os
+import sys
 
 # Handle imports gracefully - some may not exist yet
 try:
     from discover_markets import discover_markets
+
     HAS_DISCOVER_MARKETS = True
 except ImportError:
     HAS_DISCOVER_MARKETS = False
@@ -31,6 +33,7 @@ except ImportError:
 
 try:
     from reset_database import reset_database
+
     HAS_RESET_DATABASE = True
 except ImportError:
     HAS_RESET_DATABASE = False
@@ -38,11 +41,13 @@ except ImportError:
 
 try:
     from app.domains.ingestion.data_worker import get_worker
+
     HAS_DATA_WORKER = True
 except ImportError:
     try:
         # Fallback to old location
         from app.services.data_worker import get_worker
+
         HAS_DATA_WORKER = True
     except ImportError:
         HAS_DATA_WORKER = False
@@ -58,11 +63,9 @@ except ImportError:
         print("Error: Cannot find config module")
         sys.exit(1)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
+
 
 async def main():
     print("=" * 70)
@@ -88,7 +91,7 @@ async def main():
 
         # Extract market IDs
         market_ids = [v["condition_id"] for v in discovered.values() if v]
-        print(f"\n✅ Found all 3 markets!")
+        print("\n✅ Found all 3 markets!")
     else:
         print("⚠️  Market discovery script not available.")
         print("Please enter market IDs manually:")
@@ -107,10 +110,10 @@ async def main():
     print("\n📋 Add these lines to backend/.env:")
     print()
     print(f"TRACKED_MARKET_IDS={','.join(market_ids)}")
-    print(f"BACKFILL_MAX_PAGES=10000")
-    print(f"BACKFILL_STOP_ON_DUPLICATES=false")
-    print(f"BACKFILL_RATE_LIMIT_DELAY=0.1")
-    print(f"BACKFILL_PARALLEL_MARKETS=true")
+    print("BACKFILL_MAX_PAGES=10000")
+    print("BACKFILL_STOP_ON_DUPLICATES=false")
+    print("BACKFILL_RATE_LIMIT_DELAY=0.1")
+    print("BACKFILL_PARALLEL_MARKETS=true")
     print()
 
     confirm = input("Have you updated your .env file? (yes/no): ")
@@ -174,21 +177,16 @@ async def main():
     worker = await get_worker()
 
     # Check if worker has the parallel backfill method
-    if hasattr(worker, 'backfill_multiple_markets_parallel'):
+    if hasattr(worker, "backfill_multiple_markets_parallel"):
         # Run parallel backfill
-        total_trades = await worker.backfill_multiple_markets_parallel(
-            market_ids=tracked,
-            max_pages_per_market=10000
-        )
-    elif hasattr(worker, 'backfill_historical_trades'):
+        total_trades = await worker.backfill_multiple_markets_parallel(market_ids=tracked, max_pages_per_market=10000)
+    elif hasattr(worker, "backfill_historical_trades"):
         # Fallback to sequential backfill
         print("⚠️  Parallel backfill not available, running sequentially...")
         total_trades = 0
         for market_id in tracked:
             trades = await worker.backfill_historical_trades(
-                max_pages=10000,
-                target_market_ids={market_id},
-                stop_on_duplicates=False
+                max_pages=10000, target_market_ids={market_id}, stop_on_duplicates=False
             )
             total_trades += trades
     else:
@@ -201,10 +199,10 @@ async def main():
     print("\n" + "=" * 70)
     print("✅ Setup Complete!")
     print("=" * 70)
-    print(f"\nResults:")
+    print("\nResults:")
     print(f"  • Total trades ingested: {total_trades:,}")
     print(f"  • Markets tracked: {len(tracked)}")
-    print(f"  • Database: Fresh slate with 3-market data only")
+    print("  • Database: Fresh slate with 3-market data only")
     print()
     print("Next steps:")
     print("  1. Verify setup: python verify_3market_setup.py")
@@ -212,6 +210,7 @@ async def main():
     print("  3. API docs: http://localhost:8000/docs")
     print("  4. Start frontend: cd ../frontend && npm run dev")
     print()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

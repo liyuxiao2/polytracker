@@ -1,10 +1,11 @@
-import numpy as np
-from sqlalchemy import select, func, distinct
-from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime, timedelta
-from typing import Optional, Tuple, List, Dict
-from app.core.database import Trade, TraderProfile
 import os
+from datetime import datetime, timedelta
+
+import numpy as np
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.database import Trade, TraderProfile
 
 
 class InsiderDetector:
@@ -31,11 +32,7 @@ class InsiderDetector:
         self.z_score_threshold = float(os.getenv("Z_SCORE_THRESHOLD", z_score_threshold))
 
     async def calculate_z_score(
-        self,
-        wallet_address: str,
-        trade_size: float,
-        session: AsyncSession,
-        tracked_markets: set = None
+        self, wallet_address: str, trade_size: float, session: AsyncSession, tracked_markets: set = None
     ) -> tuple[float, bool]:
         """
         Calculate Z-score for a trade based on wallet's historical average.
@@ -75,10 +72,8 @@ class InsiderDetector:
         return float(z_score), is_anomaly
 
     async def evaluate_trade_for_insider_activity(
-        self,
-        trade: Trade,
-        session: AsyncSession
-    ) -> Tuple[bool, Optional[str]]:
+        self, trade: Trade, session: AsyncSession
+    ) -> tuple[bool, str | None]:
         """
         Evaluate a resolved trade for insider activity indicators.
         Called after market resolution to flag suspicious winning trades.
@@ -118,11 +113,10 @@ class InsiderDetector:
         if profile and profile.flagged_trades_count >= 3:
             # Get win rate on flagged trades
             flagged_result = await session.execute(
-                select(Trade)
-                .where(
-                    (Trade.wallet_address == trade.wallet_address) &
-                    (Trade.is_flagged == True) &
-                    (Trade.is_win.isnot(None))
+                select(Trade).where(
+                    (Trade.wallet_address == trade.wallet_address)
+                    & (Trade.is_flagged == True)
+                    & (Trade.is_win.isnot(None))
                 )
             )
             flagged_trades = flagged_result.scalars().all()
@@ -137,20 +131,14 @@ class InsiderDetector:
 
         return False, None
 
-    async def analyze_wallet_signals(
-        self,
-        wallet_address: str,
-        session: AsyncSession
-    ) -> Dict[str, any]:
+    async def analyze_wallet_signals(self, wallet_address: str, session: AsyncSession) -> dict[str, any]:
         """
         Comprehensive analysis of a wallet's trading signals.
         Returns a dictionary of all computed signals for insider detection.
         """
         # Get all trades for this wallet
         result = await session.execute(
-            select(Trade)
-            .where(Trade.wallet_address == wallet_address)
-            .order_by(Trade.timestamp.asc())
+            select(Trade).where(Trade.wallet_address == wallet_address).order_by(Trade.timestamp.asc())
         )
         trades = list(result.scalars().all())
 
@@ -167,7 +155,7 @@ class InsiderDetector:
         signals["days_since_last_trade"] = (datetime.utcnow() - last_trade.timestamp).days
 
         # 2. Market concentration (Herfindahl-Hirschman Index style)
-        market_counts: Dict[str, int] = {}
+        market_counts: dict[str, int] = {}
         for t in trades:
             market_counts[t.market_id] = market_counts.get(t.market_id, 0) + 1
 
@@ -183,8 +171,7 @@ class InsiderDetector:
 
         # 3. Off-hours trading percentage
         off_hours_trades = [
-            t for t in trades
-            if t.timestamp.hour >= self.OFF_HOURS_START and t.timestamp.hour < self.OFF_HOURS_END
+            t for t in trades if t.timestamp.hour >= self.OFF_HOURS_START and t.timestamp.hour < self.OFF_HOURS_END
         ]
         signals["off_hours_trade_pct"] = len(off_hours_trades) / total_trades if total_trades > 0 else 0.0
 
@@ -220,12 +207,8 @@ class InsiderDetector:
         return signals
 
     def is_new_wallet_large_bet(
-        self,
-        wallet_age_days: int,
-        trade_size_usd: float,
-        threshold_days: int = 7,
-        threshold_usd: float = 10000
-    ) -> Tuple[bool, Optional[str]]:
+        self, wallet_age_days: int, trade_size_usd: float, threshold_days: int = 7, threshold_usd: float = 10000
+    ) -> tuple[bool, str | None]:
         """
         Check if this is a new wallet making a suspiciously large bet.
         Signal: Fresh wallets with big positions are suspicious.
@@ -235,12 +218,8 @@ class InsiderDetector:
         return False, None
 
     def is_concentrated_trader(
-        self,
-        unique_markets: int,
-        total_trades: int,
-        market_concentration: float,
-        min_trades: int = 10
-    ) -> Tuple[bool, Optional[str]]:
+        self, unique_markets: int, total_trades: int, market_concentration: float, min_trades: int = 10
+    ) -> tuple[bool, str | None]:
         """
         Check if trader only focuses on very few markets.
         Signal: Traders with inside info often only trade specific markets.
@@ -254,10 +233,8 @@ class InsiderDetector:
         return False, None
 
     def is_suspicious_timing(
-        self,
-        hours_before_resolution: float,
-        threshold_hours: float = 24
-    ) -> Tuple[bool, Optional[str]]:
+        self, hours_before_resolution: float, threshold_hours: float = 24
+    ) -> tuple[bool, str | None]:
         """
         Check if trade was placed suspiciously close to market resolution.
         Signal: Bets placed 1-24 hours before resolution could indicate knowledge.
@@ -266,11 +243,7 @@ class InsiderDetector:
             return True, f"Bet placed {hours_before_resolution:.1f}h before resolution"
         return False, None
 
-    def is_off_hours_trader(
-        self,
-        off_hours_pct: float,
-        threshold: float = 0.5
-    ) -> Tuple[bool, Optional[str]]:
+    def is_off_hours_trader(self, off_hours_pct: float, threshold: float = 0.5) -> tuple[bool, str | None]:
         """
         Check if trader frequently trades during off-hours.
         Signal: Off-hours trading can indicate avoiding scrutiny.
@@ -280,11 +253,8 @@ class InsiderDetector:
         return False, None
 
     def is_longshot_winner(
-        self,
-        longshot_win_rate: float,
-        min_longshot_trades: int = 5,
-        threshold: float = 0.6
-    ) -> Tuple[bool, Optional[str]]:
+        self, longshot_win_rate: float, min_longshot_trades: int = 5, threshold: float = 0.6
+    ) -> tuple[bool, str | None]:
         """
         Check if trader has abnormally high win rate on longshot bets.
         Signal: Consistently winning at < 10% odds suggests information advantage.
@@ -294,10 +264,7 @@ class InsiderDetector:
         return False, None
 
     async def update_trader_profile(
-        self,
-        wallet_address: str,
-        session: AsyncSession,
-        tracked_markets: set = None
+        self, wallet_address: str, session: AsyncSession, tracked_markets: set = None
     ) -> TraderProfile:
         """
         Update or create trader profile with latest statistics.
@@ -305,11 +272,7 @@ class InsiderDetector:
         Includes win rate, PnL, outcome bias, buy/sell tracking, and advanced signals.
         """
         # Get all trades for this wallet (ordered by timestamp for age calculation)
-        query = (
-            select(Trade)
-            .where(Trade.wallet_address == wallet_address)
-            .order_by(Trade.timestamp.asc())
-        )
+        query = select(Trade).where(Trade.wallet_address == wallet_address).order_by(Trade.timestamp.asc())
 
         # Filter by tracked markets if provided
         if tracked_markets:
@@ -360,7 +323,7 @@ class InsiderDetector:
         days_since_last_trade = (datetime.utcnow() - last_trade.timestamp).days
 
         # Market concentration (HHI)
-        market_counts: Dict[str, int] = {}
+        market_counts: dict[str, int] = {}
         for t in trades:
             market_counts[t.market_id] = market_counts.get(t.market_id, 0) + 1
         unique_markets_count = len(market_counts)
@@ -368,8 +331,7 @@ class InsiderDetector:
 
         # Off-hours trading percentage
         off_hours_trades = [
-            t for t in trades
-            if t.timestamp.hour >= self.OFF_HOURS_START and t.timestamp.hour < self.OFF_HOURS_END
+            t for t in trades if t.timestamp.hour >= self.OFF_HOURS_START and t.timestamp.hour < self.OFF_HOURS_END
         ]
         off_hours_trade_pct = len(off_hours_trades) / total_trades if total_trades > 0 else 0.0
 
@@ -379,7 +341,9 @@ class InsiderDetector:
 
         # Longshot win rate (bets at < 10% odds)
         longshot_trades = [t for t in trades if t.price and t.price < 0.1 and t.is_win is not None]
-        longshot_win_rate = (sum(1 for t in longshot_trades if t.is_win) / len(longshot_trades)) if longshot_trades else 0.0
+        longshot_win_rate = (
+            (sum(1 for t in longshot_trades if t.is_win) / len(longshot_trades)) if longshot_trades else 0.0
+        )
 
         # Large bet win rate (bets > 4x average)
         large_trades = [t for t in trades if t.trade_size_usd > avg_bet_size * 4 and t.is_win is not None]
@@ -387,7 +351,9 @@ class InsiderDetector:
 
         # Avg hours before resolution
         resolved_with_timing = [t for t in resolved_trades if t.hours_before_resolution is not None]
-        avg_hours_before_resolution = float(np.mean([t.hours_before_resolution for t in resolved_with_timing])) if resolved_with_timing else None
+        avg_hours_before_resolution = (
+            float(np.mean([t.hours_before_resolution for t in resolved_with_timing])) if resolved_with_timing else None
+        )
 
         # Unrealized P&L metrics (from open positions)
         open_positions = [t for t in trades if t.is_win is None and t.unrealized_pnl_usd is not None]
@@ -416,9 +382,7 @@ class InsiderDetector:
         )
 
         # Get or create profile
-        result = await session.execute(
-            select(TraderProfile).where(TraderProfile.wallet_address == wallet_address)
-        )
+        result = await session.execute(select(TraderProfile).where(TraderProfile.wallet_address == wallet_address))
         profile = result.scalar_one_or_none()
 
         profile_data = {
@@ -474,12 +438,7 @@ class InsiderDetector:
         return profile
 
     def _calculate_insider_score(
-        self,
-        all_trades: list,
-        flagged_trades: list,
-        flagged_wins: list,
-        win_rate: float,
-        outcome_bias: float
+        self, all_trades: list, flagged_trades: list, flagged_wins: list, win_rate: float, outcome_bias: float
     ) -> float:
         """
         Calculate insider confidence score (0-100).
@@ -510,8 +469,7 @@ class InsiderDetector:
                 score += min(avg_z_score / 9 * 20, 20)
 
         # Component 3: Recency of flagged trades (0-20 points)
-        recent_trades = [t for t in all_trades if
-                        (datetime.utcnow() - t.timestamp).days <= 7]
+        recent_trades = [t for t in all_trades if (datetime.utcnow() - t.timestamp).days <= 7]
         if recent_trades:
             recent_flagged = [t for t in recent_trades if t.is_flagged]
             recent_percentage = len(recent_flagged) / len(recent_trades)
@@ -549,10 +507,10 @@ class InsiderDetector:
         """
         gross_win = sum(t.pnl_usd for t in trades if t.pnl_usd and t.pnl_usd > 0)
         gross_loss = abs(sum(t.pnl_usd for t in trades if t.pnl_usd and t.pnl_usd < 0))
-        
+
         if gross_loss == 0:
             return gross_win if gross_win > 0 else 0.0
-            
+
         return gross_win / gross_loss
 
     def _calculate_insider_score_v3(
@@ -664,12 +622,7 @@ class InsiderDetector:
 
         return min(score, 100.0)
 
-    async def get_trending_trades(
-        self,
-        session: AsyncSession,
-        min_size: float = 10000,
-        hours: int = 24
-    ) -> list:
+    async def get_trending_trades(self, session: AsyncSession, min_size: float = 10000, hours: int = 24) -> list:
         """
         Get recent trades that are flagged or exceed minimum size.
         """
@@ -677,10 +630,7 @@ class InsiderDetector:
 
         result = await session.execute(
             select(Trade)
-            .where(
-                (Trade.timestamp >= cutoff_time) &
-                ((Trade.is_flagged == True) | (Trade.trade_size_usd >= min_size))
-            )
+            .where((Trade.timestamp >= cutoff_time) & ((Trade.is_flagged == True) | (Trade.trade_size_usd >= min_size)))
             .order_by(Trade.timestamp.desc())
             .limit(100)
         )
@@ -688,10 +638,7 @@ class InsiderDetector:
         return result.scalars().all()
 
     async def detect_coordinated_trading(
-        self,
-        market_id: str,
-        session: AsyncSession,
-        window_seconds: int = 300
+        self, market_id: str, session: AsyncSession, window_seconds: int = 300
     ) -> list:
         """
         Detect potential coordinated trading activity.
@@ -699,10 +646,7 @@ class InsiderDetector:
         """
         # Get recent trades for this market
         result = await session.execute(
-            select(Trade)
-            .where(Trade.market_id == market_id)
-            .order_by(Trade.timestamp.desc())
-            .limit(100)
+            select(Trade).where(Trade.market_id == market_id).order_by(Trade.timestamp.desc()).limit(100)
         )
         trades = result.scalars().all()
 
@@ -717,7 +661,8 @@ class InsiderDetector:
 
             # Find other trades in this window
             window_trades = [
-                t for t in trades
+                t
+                for t in trades
                 if t.transaction_hash != trade.transaction_hash
                 and window_start <= t.timestamp <= window_end
                 and t.wallet_address != trade.wallet_address
@@ -725,12 +670,14 @@ class InsiderDetector:
 
             if len(window_trades) >= 2:  # 3+ wallets trading together
                 wallets = {trade.wallet_address} | {t.wallet_address for t in window_trades}
-                coordinated_groups.append({
-                    "market_id": market_id,
-                    "wallets": list(wallets),
-                    "trade_count": len(wallets),
-                    "window_start": window_start,
-                    "window_end": window_end
-                })
+                coordinated_groups.append(
+                    {
+                        "market_id": market_id,
+                        "wallets": list(wallets),
+                        "trade_count": len(wallets),
+                        "window_start": window_start,
+                        "window_end": window_end,
+                    }
+                )
 
         return coordinated_groups

@@ -1,15 +1,15 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import declarative_base
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, PrimaryKeyConstraint
-from datetime import datetime
 import os
+from datetime import datetime
+
 from dotenv import load_dotenv
+from sqlalchemy import Boolean, Column, DateTime, Float, Integer, PrimaryKeyConstraint, String
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import declarative_base
 
 load_dotenv()
 
 DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://polytracker:polytracker_dev_password@localhost:5432/polytracker"
+    "DATABASE_URL", "postgresql+asyncpg://polytracker:polytracker_dev_password@localhost:5432/polytracker"
 )
 
 # Create engine with appropriate settings based on database type
@@ -67,9 +67,7 @@ class Trade(Base):
     shares_held = Column(Float, nullable=True)  # Number of shares purchased (size/price)
     last_pnl_update = Column(DateTime, nullable=True)  # When P&L was last calculated
 
-    __table_args__ = (
-        PrimaryKeyConstraint('wallet_address', 'market_id', 'timestamp'),
-    )
+    __table_args__ = (PrimaryKeyConstraint("wallet_address", "market_id", "timestamp"),)
 
 
 class TraderProfile(Base):
@@ -125,6 +123,7 @@ class TraderProfile(Base):
 
 class Market(Base):
     """Track market information and resolution status."""
+
     __tablename__ = "markets"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -169,6 +168,7 @@ class MarketSnapshot(Base):
     Periodic snapshots of market order book state for backtesting.
     Captures bid/ask/spread/liquidity at regular intervals.
     """
+
     __tablename__ = "market_snapshots"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -215,6 +215,7 @@ class PriceHistory(Base):
     Historical price timeseries for backtesting.
     Stores price data at configurable intervals (1m, 5m, 1h, etc.)
     """
+
     __tablename__ = "price_history"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -248,6 +249,7 @@ class TrackedMarket(Base):
     Markets we're actively tracking for snapshots.
     Stores token IDs and metadata for snapshot collection.
     """
+
     __tablename__ = "tracked_markets"
 
     id = Column(Integer, primary_key=True, index=True)

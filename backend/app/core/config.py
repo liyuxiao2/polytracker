@@ -1,6 +1,6 @@
-from pydantic_settings import BaseSettings
 from functools import lru_cache
-from typing import Optional
+
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -22,9 +22,9 @@ class Settings(BaseSettings):
     # To get these credentials:
     # 1. Use py-clob-client: client.create_or_derive_api_creds()
     # 2. Or generate from your Polygon wallet private key
-    polymarket_api_key: Optional[str] = None
-    polymarket_api_secret: Optional[str] = None
-    polymarket_api_passphrase: Optional[str] = None
+    polymarket_api_key: str | None = None
+    polymarket_api_secret: str | None = None
+    polymarket_api_passphrase: str | None = None
 
     # Mock mode - set to False to use real APIs
     mock_mode: bool = True
