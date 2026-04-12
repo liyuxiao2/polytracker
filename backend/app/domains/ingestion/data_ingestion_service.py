@@ -30,7 +30,7 @@ class DataIngestionService:
         self.tracked_markets = set(self.settings.tracked_market_id_list)
 
         if self.tracked_markets:
-            logger.info(f"[Worker] Tracking {len(self.tracked_markets)} specific markets: {list(self.tracked_markets)}")
+            logger.info(f"[Ingestion] Tracking {len(self.tracked_markets)} specific markets: {list(self.tracked_markets)}")
         else:
             logger.info("[Worker] Tracking ALL markets (no filter configured)")
 
@@ -80,7 +80,6 @@ class DataIngestionService:
                 existing = await self.trader_repo.get_trade_by_transaction_hash(session, transaction_hash)
                 if existing:
                     return None
-
             market_slug = trade_data.get("event_slug", "")
             market_name = trade_data.get("market_name", "Unknown Market")
             timestamp = datetime.fromtimestamp(int(trade_data.get("timestamp", 0)) / 1000)

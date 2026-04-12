@@ -22,6 +22,9 @@ import logging
 import os
 import sys
 
+# Ensure other scripts in the same directory can be imported
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 # Handle imports gracefully - some may not exist yet
 try:
     from discover_markets import discover_markets
@@ -122,8 +125,7 @@ async def main():
         print("   Copy the lines above into backend/.env")
         sys.exit(0)
 
-    # Reload settings to verify
-    os.environ["TRACKED_MARKET_IDS"] = ",".join(market_ids)  # Force reload
+    # Reload settings to verify that the .env file was updated
     get_settings.cache_clear()
     settings = get_settings()
     tracked = settings.tracked_market_id_list

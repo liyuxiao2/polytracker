@@ -93,9 +93,8 @@ class MarketWatchWorker:
                 )
                 return markets
             else:
-                # Fetch ONLY tracked markets
-                tracked_markets_list = list(self.tracked_markets)
-                tasks = [self.client.get_market_info(market_id) for market_id in tracked_markets_list]
+                # Fetch ONLY tracked markets (in parallel)
+                tasks = [self.client.get_market_info(market_id) for market_id in self.tracked_markets]
                 market_infos = await asyncio.gather(*tasks)
 
                 markets = []
