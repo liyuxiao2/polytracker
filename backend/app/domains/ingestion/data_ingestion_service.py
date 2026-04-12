@@ -9,6 +9,7 @@ from app.core.database import Trade, async_session_maker
 from app.domains.traders.repository import TraderRepository
 from app.domains.ingestion.polymarket_client import PolymarketClient
 from app.domains.ingestion.insider_detector import InsiderDetector
+from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,8 @@ class DataIngestionService:
             asset_id = trade_data.get("asset_id", "")
 
             z_score, is_flagged = await self.detector.calculate_z_score(
-                wallet_address, trade_size_usd, session
+                wallet_address, trade_size_usd, session,
+                tracked_markets=self.tracked_markets if self.tracked_markets else None
             )
 
             flag_reason = None
@@ -118,7 +120,10 @@ class DataIngestionService:
             session.add(trade)
 
             if is_flagged:
-                profile = await self.detector.update_trader_profile(wallet_address, session)
+                profile = await self.detector.update_trader_profile(
+                    wallet_address, session,
+                    tracked_markets=self.tracked_markets if self.tracked_markets else None
+                )
                 if profile and profile.total_trades < 50:
                     asyncio.create_task(self.backfill_trader_history(wallet_address))
 
@@ -179,7 +184,10 @@ class DataIngestionService:
                 await session.commit()
                 if count > 0:
                     logger.info(f"[Ingestion] Backfilled {count} trades for {wallet_address}")
-                    await self.detector.update_trader_profile(wallet_address, session)
+                    await self.detector.update_trader_profile(
+                        wallet_address, session,
+                        tracked_markets=self.tracked_markets if self.tracked_markets else None
+                    )
                     
         except Exception as e:
             logger.error(f"[Ingestion] Error backfilling {wallet_address}: {e}")

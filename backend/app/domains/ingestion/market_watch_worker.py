@@ -40,6 +40,16 @@ class MarketWatchWorker:
             "Sports": ["world cup", "olympics", "soccer", "tennis", "formula 1", "ufc"],
         }
 
+        # Market filtering
+        from app.core.config import get_settings
+        self.settings = get_settings()
+        self.tracked_markets = set(self.settings.tracked_market_id_list)
+
+        if self.tracked_markets:
+            logger.info(f"[MarketWatch] Tracking {len(self.tracked_markets)} specific markets")
+        else:
+            logger.info(f"[MarketWatch] Tracking ALL markets (no filter configured)")
+
     def categorize_market(self, question: str) -> str:
         """Categorize a market based on its question text"""
         if not question:
@@ -55,16 +65,38 @@ class MarketWatchWorker:
         return "Other"
 
     async def fetch_active_markets(self) -> list:
-        """Fetch active markets from Polymarket API"""
+        """
+        Fetch markets to monitor.
+        If tracked_markets is configured, only fetch those specific markets.
+        Otherwise, fetch all active markets.
+        """
         try:
-            # Fetch markets from CLOB API
-            all_markets = await self.client.get_markets_list(limit=200, closed=False)
+            if not self.tracked_markets:
+                # Original behavior: fetch all active markets
+                all_markets = await self.client.get_markets_list(limit=200, closed=False)
+                markets = [m for m in all_markets if not m.get("closed", False)]
+                logger.info(f"Fetched {len(markets)} active markets from Polymarket (filtered from {len(all_markets)} total)")
+                return markets
+            else:
+                # Fetch ONLY tracked markets
+                tracked_markets_list = list(self.tracked_markets)
+                tasks = [self.client.get_market_info(market_id) for market_id in tracked_markets_list]
+                market_infos = await asyncio.gather(*tasks)
 
-            # Filter out closed markets (API returns both closed and active despite parameter)
-            markets = [m for m in all_markets if not m.get("closed", False)]
+                markets = []
+                for market_id, market_info in zip(tracked_markets_list, market_infos):
+                    if market_info:
+                        # This assumes get_market_info is modified to return 'tokens'
+                        markets.append({
+                            "conditionId": market_id,
+                            "question": market_info.get("question", ""),
+                            "closed": market_info.get("resolved", False),
+                            "tokens": market_info.get("tokens", []),
+                            "endDateIso": market_info.get("end_date", "")
+                        })
 
-            logger.info(f"Fetched {len(markets)} active markets from Polymarket (filtered from {len(all_markets)} total)")
-            return markets
+                logger.info(f"Fetched {len(markets)} tracked markets")
+                return markets
         except Exception as e:
             logger.error(f"Error fetching markets: {e}")
             return []
