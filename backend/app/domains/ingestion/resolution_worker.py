@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from app.core.database import Trade, TraderProfile, async_session_maker
 from app.domains.ingestion.polymarket_client import PolymarketClient
+from app.core.config import get_settings
 import os
 
 logger = logging.getLogger(__name__)
@@ -18,11 +19,12 @@ class TradeResolutionWorker:
     """
 
     def __init__(self):
+        settings = get_settings()
         self.client = PolymarketClient()
-        self.poll_interval = int(os.getenv("RESOLUTION_POLL_INTERVAL", "300"))  # 5 min default
+        self.poll_interval = settings.resolution_poll_interval
         self.is_running = False
         self._market_cache: Dict[str, dict] = {}  # Cache market resolution status
-        self._cache_ttl = 60  # Cache TTL in seconds
+        self._cache_ttl = settings.resolution_cache_ttl
 
     async def start(self):
         """

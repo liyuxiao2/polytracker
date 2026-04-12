@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta
 from typing import Optional, Tuple, List, Dict
 from app.core.database import Trade, TraderProfile
+from app.core.config import get_settings
 import os
 
 
@@ -23,12 +24,10 @@ class InsiderDetector:
     flagging but is a minor factor in the overall insider score.
     """
 
-    # Off-hours defined as 2-6 AM UTC (low liquidity, less scrutiny)
-    OFF_HOURS_START = 2
-    OFF_HOURS_END = 6
-
-    def __init__(self, z_score_threshold: float = 4.5):
-        self.z_score_threshold = float(os.getenv("Z_SCORE_THRESHOLD", z_score_threshold))
+    def __init__(self, z_score_threshold: float = None):
+        settings = get_settings()
+        self.z_score_threshold = z_score_threshold if z_score_threshold is not None else settings.insider_z_score_threshold
+        self.settings = settings
 
     async def calculate_z_score(
         self,
@@ -51,7 +50,7 @@ class InsiderDetector:
 
         if len(historical_trades) < 3:
             # Not enough data, use a simple threshold
-            return 0.0, trade_size > 10000
+            return 0.0, trade_size > self.settings.large_trade_threshold
 
         trade_sizes = np.array(historical_trades)
         mean = np.mean(trade_sizes)
@@ -87,11 +86,11 @@ class InsiderDetector:
             return False, None
 
         # Check 1: Large winning bet (> $25k profit)
-        if trade.pnl_usd and trade.pnl_usd > 25000:
+        if trade.pnl_usd and trade.pnl_usd > self.settings.profit_threshold:
             reasons.append(f"Large winning bet: ${trade.pnl_usd:,.0f} profit")
 
         # Check 2: High conviction bet (bought at very low price, won)
-        if trade.price and trade.price < 0.1:
+        if trade.price and trade.price < self.settings.odds_threshold:
             reasons.append(f"High conviction: bought at {trade.price:.0%} odds")
 
         # Check 3: Large bet relative to wallet's average
@@ -102,11 +101,11 @@ class InsiderDetector:
 
         if profile and profile.avg_bet_size > 0:
             deviation = (trade.trade_size_usd - profile.avg_bet_size) / profile.avg_bet_size
-            if deviation > 4.0:  # More than 4x their average
+            if deviation > self.settings.avg_bet_deviation_multiplier:  # More than Nx their average
                 reasons.append(f"Bet {deviation:.1f}x larger than average")
 
         # Check 4: Check wallet's win rate on flagged trades
-        if profile and profile.flagged_trades_count >= 3:
+        if profile and profile.flagged_trades_count >= self.settings.min_flagged_trades:
             # Get win rate on flagged trades
             flagged_result = await session.execute(
                 select(Trade)
@@ -175,7 +174,7 @@ class InsiderDetector:
         # 3. Off-hours trading percentage
         off_hours_trades = [
             t for t in trades
-            if t.timestamp.hour >= self.OFF_HOURS_START and t.timestamp.hour < self.OFF_HOURS_END
+            if t.timestamp.hour >= self.settings.off_hours_start and t.timestamp.hour < self.settings.off_hours_end
         ]
         signals["off_hours_trade_pct"] = len(off_hours_trades) / total_trades if total_trades > 0 else 0.0
 
@@ -194,7 +193,7 @@ class InsiderDetector:
         # 6. Large bet win rate (bets > 4x average)
         trade_sizes = [t.trade_size_usd for t in trades]
         avg_size = np.mean(trade_sizes) if trade_sizes else 0
-        large_trades = [t for t in trades if t.trade_size_usd > avg_size * 4 and t.is_win is not None]
+        large_trades = [t for t in trades if t.trade_size_usd > avg_size * self.settings.avg_bet_deviation_multiplier and t.is_win is not None]
         if large_trades:
             large_wins = sum(1 for t in large_trades if t.is_win)
             signals["large_bet_win_rate"] = large_wins / len(large_trades)
@@ -240,19 +239,21 @@ class InsiderDetector:
             return False, None
 
         # Very concentrated: only 1-2 markets with HHI > 0.7
-        if unique_markets <= 2 and market_concentration > 0.7:
+        if unique_markets <= 2 and market_concentration > self.settings.market_concentration_threshold:
             return True, f"Highly concentrated: {unique_markets} markets, {market_concentration:.0%} HHI"
         return False, None
 
     def is_suspicious_timing(
         self,
         hours_before_resolution: float,
-        threshold_hours: float = 24
+        threshold_hours: float = None
     ) -> Tuple[bool, Optional[str]]:
         """
         Check if trade was placed suspiciously close to market resolution.
         Signal: Bets placed 1-24 hours before resolution could indicate knowledge.
         """
+        if threshold_hours is None:
+            threshold_hours = self.settings.pre_resolution_hours
         if hours_before_resolution is not None and 0 < hours_before_resolution <= threshold_hours:
             return True, f"Bet placed {hours_before_resolution:.1f}h before resolution"
         return False, None
@@ -274,12 +275,14 @@ class InsiderDetector:
         self,
         longshot_win_rate: float,
         min_longshot_trades: int = 5,
-        threshold: float = 0.6
+        threshold: float = None
     ) -> Tuple[bool, Optional[str]]:
         """
         Check if trader has abnormally high win rate on longshot bets.
         Signal: Consistently winning at < 10% odds suggests information advantage.
         """
+        if threshold is None:
+            threshold = self.settings.longshot_win_rate_high
         if longshot_win_rate >= threshold:
             return True, f"High longshot win rate: {longshot_win_rate:.0%} on <10% odds bets"
         return False, None
@@ -352,7 +355,7 @@ class InsiderDetector:
         # Off-hours trading percentage
         off_hours_trades = [
             t for t in trades
-            if t.timestamp.hour >= self.OFF_HOURS_START and t.timestamp.hour < self.OFF_HOURS_END
+            if t.timestamp.hour >= self.settings.off_hours_start and t.timestamp.hour < self.settings.off_hours_end
         ]
         off_hours_trade_pct = len(off_hours_trades) / total_trades if total_trades > 0 else 0.0
 
@@ -365,7 +368,7 @@ class InsiderDetector:
         longshot_win_rate = (sum(1 for t in longshot_trades if t.is_win) / len(longshot_trades)) if longshot_trades else 0.0
 
         # Large bet win rate (bets > 4x average)
-        large_trades = [t for t in trades if t.trade_size_usd > avg_bet_size * 4 and t.is_win is not None]
+        large_trades = [t for t in trades if t.trade_size_usd > avg_bet_size * self.settings.avg_bet_deviation_multiplier and t.is_win is not None]
         large_bet_win_rate = (sum(1 for t in large_trades if t.is_win) / len(large_trades)) if large_trades else 0.0
 
         # Avg hours before resolution
@@ -611,19 +614,19 @@ class InsiderDetector:
         # ── Component 3: Longshot wins (0-15 points) ──
         longshot_trades = [t for t in trades if t.price and t.price < 0.1 and t.is_win is not None]
         if len(longshot_trades) >= 2:
-            if longshot_win_rate > 0.25:
-                score += min((longshot_win_rate - 0.25) * 20, 15)
+            if longshot_win_rate > self.settings.longshot_win_rate_low:
+                score += min((longshot_win_rate - self.settings.longshot_win_rate_low) * 20, 15)
 
         # ── Component 4: Large bet wins (0-5 points) ──
         avg_bet = np.mean([t.trade_size_usd for t in trades]) if trades else 0
-        large_trades = [t for t in trades if t.trade_size_usd > avg_bet * 4 and t.is_win is not None]
+        large_trades = [t for t in trades if t.trade_size_usd > avg_bet * self.settings.avg_bet_deviation_multiplier and t.is_win is not None]
         if len(large_trades) >= 2:
             if large_bet_win_rate > 0.5:
                 score += min((large_bet_win_rate - 0.5) * 10, 5)
 
         # ── Component 5: Market Concentration (0-5 points) ──
-        if total_trades >= 5 and market_concentration > 0.7:
-            score += min((market_concentration - 0.7) * 16.6, 5)
+        if total_trades >= 5 and market_concentration > self.settings.market_concentration_threshold:
+            score += min((market_concentration - self.settings.market_concentration_threshold) * 16.6, 5)
 
         # ── Component 6: Behavioral Signals (0-5 points) ──
         behavioral = 0.0

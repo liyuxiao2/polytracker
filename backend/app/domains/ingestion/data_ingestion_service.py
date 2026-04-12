@@ -14,15 +14,13 @@ logger = logging.getLogger(__name__)
 
 class DataIngestionService:
     def __init__(self):
+        from app.core.config import get_settings
+        self.settings = get_settings()
         self.trader_repo = TraderRepository()
         self.client = PolymarketClient()
         self.detector = InsiderDetector()
-        self.min_trade_size = float(os.getenv("MIN_TRADE_SIZE_USD", "0"))
-        self.trade_fetch_limit = int(os.getenv("TRADE_FETCH_LIMIT", "1000"))
-
-        # Add market filtering support
-        from app.core.config import get_settings
-        self.settings = get_settings()
+        self.min_trade_size = self.settings.min_trade_size_filter
+        self.trade_fetch_limit = self.settings.trade_fetch_limit
         self.tracked_markets = set(self.settings.tracked_market_id_list)
 
         if self.tracked_markets:

@@ -28,17 +28,9 @@ class MarketWatchWorker:
         self.running = False
         self.task = None
 
-        # Category keywords for market classification
-        self.category_keywords = {
-            "NBA": ["nba", "basketball", "lakers", "warriors", "celtics", "mvp", "finals"],
-            "NFL": ["nfl", "football", "super bowl", "quarterback", "patriots", "cowboys"],
-            "Politics": ["president", "election", "senate", "congress", "democrat", "republican", "biden", "trump", "harris"],
-            "Crypto": ["bitcoin", "ethereum", "crypto", "btc", "eth", "solana", "doge", "blockchain"],
-            "Business": ["stock", "tesla", "apple", "amazon", "ipo", "merger", "ceo"],
-            "Entertainment": ["oscar", "emmy", "grammy", "movie", "album", "box office"],
-            "Science": ["covid", "vaccine", "mars", "spacex", "nasa", "climate"],
-            "Sports": ["world cup", "olympics", "soccer", "tennis", "formula 1", "ufc"],
-        }
+        # Category keywords from config
+        settings = get_settings()
+        self.category_keywords = settings.category_keywords
 
     def categorize_market(self, question: str) -> str:
         """Categorize a market based on its question text"""
@@ -198,7 +190,7 @@ class MarketWatchWorker:
             if market.is_resolved and market.resolution_time:
                 late_trades = [
                     t for t in trades
-                    if t.hours_before_resolution is not None and 0 < t.hours_before_resolution < 24
+                    if t.hours_before_resolution is not None and 0 < t.hours_before_resolution < get_settings().pre_resolution_hours
                 ]
                 if len(late_trades) > 5:
                     suspicion_factors.append(20)
@@ -275,13 +267,13 @@ async def get_market_watch_worker() -> MarketWatchWorker:
     """Get or create the singleton market watch worker instance"""
     global _market_watch_worker_instance
     if _market_watch_worker_instance is None:
-        _market_watch_worker_instance = MarketWatchWorker(poll_interval=300)
+        _market_watch_worker_instance = MarketWatchWorker(poll_interval=get_settings().resolution_poll_interval)
     return _market_watch_worker_instance
 
 
 async def main():
     """Main entry point"""
-    worker = MarketWatchWorker(poll_interval=300)  # 5 minutes
+    worker = MarketWatchWorker(poll_interval=get_settings().resolution_poll_interval)
     await worker.run()
 
 
