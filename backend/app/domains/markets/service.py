@@ -107,18 +107,18 @@ class MarketService:
     async def bulk_resolve_trades(self, concurrency: int) -> dict:
         from app.domains.ingestion.resolution_worker import get_resolution_worker
         from app.domains.ingestion.insider_detector import InsiderDetector
-        from app.core.database import async_session_maker
-        
+        from app.core.database import get_db_session
+
         worker = await get_resolution_worker()
         stats = await worker.bulk_resolve_all(concurrency=concurrency)
 
         if stats["trades_resolved"] > 0:
             detector = InsiderDetector()
-            async with async_session_maker() as session:
+            async with get_db_session(readonly=True) as session:
                 wallets = await self.market_repo.get_distinct_wallets_with_resolved_trades(session)
 
             recalculated = 0
-            async with async_session_maker() as session:
+            async with get_db_session() as session:
                 for wallet in wallets:
                     await detector.update_trader_profile(wallet, session)
                     recalculated += 1

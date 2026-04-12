@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, PrimaryKeyConstraint
@@ -272,6 +273,20 @@ class TrackedMarket(Base):
     # Timestamps
     added_at = Column(DateTime, default=datetime.utcnow)
     last_snapshot_at = Column(DateTime, nullable=True)
+
+
+@asynccontextmanager
+async def get_db_session(readonly: bool = False):
+    """Async context manager for database sessions.
+    Commits on success (unless readonly), rolls back on error."""
+    async with async_session_maker() as session:
+        try:
+            yield session
+            if not readonly:
+                await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
 
 async def init_db():

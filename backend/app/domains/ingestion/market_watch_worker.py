@@ -5,7 +5,7 @@ import asyncio
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
-from app.core.database import Market, Trade, async_session_maker
+from app.core.database import Market, Trade, get_db_session
 from app.domains.ingestion.polymarket_client import PolymarketClient
 from app.core.config import get_settings
 import logging
@@ -216,7 +216,7 @@ class MarketWatchWorker:
         """Run a single market update cycle"""
         logger.info("Starting market watch update cycle...")
 
-        async with async_session_maker() as session:
+        async with get_db_session() as session:
             # Fetch markets from API
             markets_data = await self.fetch_active_markets()
 

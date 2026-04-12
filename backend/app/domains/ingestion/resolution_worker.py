@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
-from app.core.database import Trade, TraderProfile, async_session_maker
+from app.core.database import Trade, TraderProfile, get_db_session
 from app.domains.ingestion.polymarket_client import PolymarketClient
 from app.core.config import get_settings
 import os
@@ -59,7 +59,7 @@ class TradeResolutionWorker:
         await self._update_unrealized_pnl()
 
         # Phase 2: Check for resolutions (existing logic)
-        async with async_session_maker() as session:
+        async with get_db_session() as session:
             # Get unresolved trades (is_win is NULL)
             result = await session.execute(
                 select(Trade)
@@ -127,7 +127,7 @@ class TradeResolutionWorker:
         Update unrealized P&L for all open positions (is_win IS NULL).
         Groups by market_id to minimize API calls.
         """
-        async with async_session_maker() as session:
+        async with get_db_session() as session:
             # Get open BUY positions (unresolved trades)
             # Skip SELL positions for now as short mechanics not fully implemented
             result = await session.execute(
@@ -352,7 +352,7 @@ class TradeResolutionWorker:
         sem = _asyncio.Semaphore(concurrency)
         stats = {"markets_checked": 0, "markets_resolved": 0, "trades_resolved": 0, "errors": 0}
 
-        async with async_session_maker() as session:
+        async with get_db_session(readonly=True) as session:
             # Get all distinct market IDs with unresolved trades
             result = await session.execute(
                 select(Trade.market_id)
@@ -396,7 +396,7 @@ class TradeResolutionWorker:
             return stats
 
         # Now resolve trades in DB, processing one market at a time
-        async with async_session_maker() as session:
+        async with get_db_session() as session:
             for market_id, resolved_outcome in resolved_markets.items():
                 result = await session.execute(
                     select(Trade)

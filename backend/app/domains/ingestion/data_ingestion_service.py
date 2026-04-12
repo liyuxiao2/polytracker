@@ -5,7 +5,7 @@ import asyncio
 import uuid
 import os
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.database import Trade, async_session_maker
+from app.core.database import Trade, get_db_session
 from app.domains.traders.repository import TraderRepository
 from app.domains.ingestion.polymarket_client import PolymarketClient
 from app.domains.ingestion.insider_detector import InsiderDetector
@@ -34,7 +34,7 @@ class DataIngestionService:
         new_trades = 0
         flagged_trades = 0
 
-        async with async_session_maker() as session:
+        async with get_db_session() as session:
             trades = await self.client.get_recent_trades(limit=self.trade_fetch_limit)
             fetch_time = time.time() - start_time
 
@@ -133,7 +133,7 @@ class DataIngestionService:
             if not activity:
                 return
 
-            async with async_session_maker() as session:
+            async with get_db_session() as session:
                 count = 0
                 for item in activity:
                     txn_hash = item.get("transactionHash")
@@ -220,7 +220,7 @@ class DataIngestionService:
             cutoff_date = datetime.utcnow() - timedelta(days=days_back)
             logger.info(f"[Backfill] Will stop at {cutoff_date.strftime('%Y-%m-%d')}")
 
-        async with async_session_maker() as session:
+        async with get_db_session() as session:
             for page in range(max_pages):
                 # Fetch page of trades
                 trades = await self.client.get_historical_trades(
