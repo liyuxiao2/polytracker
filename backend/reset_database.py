@@ -9,12 +9,15 @@ Drops all tables and recreates schema from scratch.
 Usage:
     python reset_database.py
 """
+
 import asyncio
-from app.core.database import Base, engine
 import logging
+
+from app.core.database import Base, engine
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 async def reset_database():
     """Drop all tables and recreate schema"""
@@ -44,6 +47,7 @@ async def reset_database():
 
     logger.info("✅ Database reset complete!")
     logger.info("   All tables dropped and recreated with empty schema.")
+
 
 if __name__ == "__main__":
     asyncio.run(reset_database())

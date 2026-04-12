@@ -1,17 +1,18 @@
 import asyncio
 import logging
 import os
-from app.domains.ingestion.polymarket_client import PolymarketClient
+
 from app.domains.ingestion.data_ingestion_service import DataIngestionService
 
 logger = logging.getLogger(__name__)
+
 
 class DataIngestionWorker:
     def __init__(self):
         self.poll_interval = int(os.getenv("POLL_INTERVAL_SECONDS", "10"))
         self.is_running = False
         self.ingestion_service = DataIngestionService()
-        self.client = self.ingestion_service.client # for generic stop
+        self.client = self.ingestion_service.client  # for generic stop
 
     async def start(self):
         """Start the background worker that continuously polls Polymarket API."""
@@ -37,19 +38,18 @@ class DataIngestionWorker:
         max_pages: int = 100,
         target_market_ids: set = None,
         days_back: int = None,
-        stop_on_duplicates: bool = True
+        stop_on_duplicates: bool = True,
     ):
-        return await self.ingestion_service.backfill_historical_trades(max_pages, target_market_ids, days_back, stop_on_duplicates)
+        return await self.ingestion_service.backfill_historical_trades(
+            max_pages, target_market_ids, days_back, stop_on_duplicates
+        )
 
-    async def backfill_multiple_markets_parallel(
-        self,
-        market_ids: List[str],
-        max_pages_per_market: int = 10000
-    ):
+    async def backfill_multiple_markets_parallel(self, market_ids: list[str], max_pages_per_market: int = 10000):
         return await self.ingestion_service.backfill_multiple_markets_parallel(market_ids, max_pages_per_market)
 
 
 worker_instance = None
+
 
 async def get_worker() -> DataIngestionWorker:
     global worker_instance
@@ -57,10 +57,9 @@ async def get_worker() -> DataIngestionWorker:
         worker_instance = DataIngestionWorker()
     return worker_instance
 
+
 async def run_backfill(max_pages: int = 100, days_back: int = None, stop_on_duplicates: bool = True):
     worker = await get_worker()
     return await worker.backfill_historical_trades(
-        max_pages=max_pages,
-        days_back=days_back,
-        stop_on_duplicates=stop_on_duplicates
+        max_pages=max_pages, days_back=days_back, stop_on_duplicates=stop_on_duplicates
     )

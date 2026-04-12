@@ -1,7 +1,6 @@
-import pytest
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from app.models.database import Trade, TraderProfile, Market
+from app.core.database import Market, Trade, TraderProfile
 
 
 class TestHealthEndpoint:
@@ -339,12 +338,14 @@ class TestMarketTrades:
 
     async def test_market_trades_count(self, client, session):
         for i in range(5):
-            session.add(Trade(
-                wallet_address=f"0x{i}",
-                market_id="counted_market",
-                market_name="Count",
-                trade_size_usd=100.0,
-            ))
+            session.add(
+                Trade(
+                    wallet_address=f"0x{i}",
+                    market_id="counted_market",
+                    market_name="Count",
+                    trade_size_usd=100.0,
+                )
+            )
         await session.commit()
 
         resp = await client.get("/api/markets/counted_market/trades/count")

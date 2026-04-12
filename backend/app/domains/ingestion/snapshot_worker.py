@@ -1,11 +1,12 @@
 import asyncio
 import logging
 import os
-from typing import List
+
 from app.core.database import TrackedMarket
 from app.domains.ingestion.snapshot_service import SnapshotService
 
 logger = logging.getLogger(__name__)
+
 
 class SnapshotWorker:
     """
@@ -39,7 +40,7 @@ class SnapshotWorker:
     async def add_tracked_market(self, *args, **kwargs) -> TrackedMarket:
         return await self.snapshot_service.add_tracked_market(*args, **kwargs)
 
-    async def auto_discover_markets(self, *args, **kwargs) -> List[TrackedMarket]:
+    async def auto_discover_markets(self, *args, **kwargs) -> list[TrackedMarket]:
         return await self.snapshot_service.auto_discover_markets(*args, **kwargs)
 
     async def backfill_price_history(self, *args, **kwargs) -> int:
@@ -47,6 +48,7 @@ class SnapshotWorker:
 
 
 snapshot_worker_instance = None
+
 
 async def get_snapshot_worker() -> SnapshotWorker:
     global snapshot_worker_instance

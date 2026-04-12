@@ -6,10 +6,12 @@ providing immediate insider trading signals without waiting for market resolutio
 
 Run: python backend/migrations/add_unrealized_pnl.py
 """
-from sqlalchemy import text
+
 import asyncio
-import sys
 import os
+import sys
+
+from sqlalchemy import text
 
 # Add parent directory to path to import app modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -25,33 +27,25 @@ async def upgrade():
         # Trade table additions
         print("[Migration] Adding columns to trades table...")
         try:
-            await conn.execute(text(
-                "ALTER TABLE trades ADD COLUMN unrealized_pnl_usd FLOAT"
-            ))
+            await conn.execute(text("ALTER TABLE trades ADD COLUMN unrealized_pnl_usd FLOAT"))
             print("  - Added unrealized_pnl_usd")
         except Exception as e:
             print(f"  - unrealized_pnl_usd already exists or error: {e}")
 
         try:
-            await conn.execute(text(
-                "ALTER TABLE trades ADD COLUMN current_position_value_usd FLOAT"
-            ))
+            await conn.execute(text("ALTER TABLE trades ADD COLUMN current_position_value_usd FLOAT"))
             print("  - Added current_position_value_usd")
         except Exception as e:
             print(f"  - current_position_value_usd already exists or error: {e}")
 
         try:
-            await conn.execute(text(
-                "ALTER TABLE trades ADD COLUMN shares_held FLOAT"
-            ))
+            await conn.execute(text("ALTER TABLE trades ADD COLUMN shares_held FLOAT"))
             print("  - Added shares_held")
         except Exception as e:
             print(f"  - shares_held already exists or error: {e}")
 
         try:
-            await conn.execute(text(
-                "ALTER TABLE trades ADD COLUMN last_pnl_update TIMESTAMP"
-            ))
+            await conn.execute(text("ALTER TABLE trades ADD COLUMN last_pnl_update TIMESTAMP"))
             print("  - Added last_pnl_update")
         except Exception as e:
             print(f"  - last_pnl_update already exists or error: {e}")
@@ -59,49 +53,37 @@ async def upgrade():
         # TraderProfile table additions
         print("[Migration] Adding columns to trader_profiles table...")
         try:
-            await conn.execute(text(
-                "ALTER TABLE trader_profiles ADD COLUMN open_positions_count INTEGER DEFAULT 0"
-            ))
+            await conn.execute(text("ALTER TABLE trader_profiles ADD COLUMN open_positions_count INTEGER DEFAULT 0"))
             print("  - Added open_positions_count")
         except Exception as e:
             print(f"  - open_positions_count already exists or error: {e}")
 
         try:
-            await conn.execute(text(
-                "ALTER TABLE trader_profiles ADD COLUMN total_unrealized_pnl FLOAT DEFAULT 0.0"
-            ))
+            await conn.execute(text("ALTER TABLE trader_profiles ADD COLUMN total_unrealized_pnl FLOAT DEFAULT 0.0"))
             print("  - Added total_unrealized_pnl")
         except Exception as e:
             print(f"  - total_unrealized_pnl already exists or error: {e}")
 
         try:
-            await conn.execute(text(
-                "ALTER TABLE trader_profiles ADD COLUMN avg_unrealized_pnl FLOAT DEFAULT 0.0"
-            ))
+            await conn.execute(text("ALTER TABLE trader_profiles ADD COLUMN avg_unrealized_pnl FLOAT DEFAULT 0.0"))
             print("  - Added avg_unrealized_pnl")
         except Exception as e:
             print(f"  - avg_unrealized_pnl already exists or error: {e}")
 
         try:
-            await conn.execute(text(
-                "ALTER TABLE trader_profiles ADD COLUMN unrealized_roi FLOAT DEFAULT 0.0"
-            ))
+            await conn.execute(text("ALTER TABLE trader_profiles ADD COLUMN unrealized_roi FLOAT DEFAULT 0.0"))
             print("  - Added unrealized_roi")
         except Exception as e:
             print(f"  - unrealized_roi already exists or error: {e}")
 
         try:
-            await conn.execute(text(
-                "ALTER TABLE trader_profiles ADD COLUMN unrealized_win_count INTEGER DEFAULT 0"
-            ))
+            await conn.execute(text("ALTER TABLE trader_profiles ADD COLUMN unrealized_win_count INTEGER DEFAULT 0"))
             print("  - Added unrealized_win_count")
         except Exception as e:
             print(f"  - unrealized_win_count already exists or error: {e}")
 
         try:
-            await conn.execute(text(
-                "ALTER TABLE trader_profiles ADD COLUMN unrealized_win_rate FLOAT DEFAULT 0.0"
-            ))
+            await conn.execute(text("ALTER TABLE trader_profiles ADD COLUMN unrealized_win_rate FLOAT DEFAULT 0.0"))
             print("  - Added unrealized_win_rate")
         except Exception as e:
             print(f"  - unrealized_win_rate already exists or error: {e}")
@@ -116,12 +98,7 @@ async def downgrade():
     async with engine.begin() as conn:
         # Trade table
         print("[Migration] Removing columns from trades table...")
-        columns_to_remove = [
-            "unrealized_pnl_usd",
-            "current_position_value_usd",
-            "shares_held",
-            "last_pnl_update"
-        ]
+        columns_to_remove = ["unrealized_pnl_usd", "current_position_value_usd", "shares_held", "last_pnl_update"]
         for column in columns_to_remove:
             try:
                 await conn.execute(text(f"ALTER TABLE trades DROP COLUMN {column}"))
@@ -137,7 +114,7 @@ async def downgrade():
             "avg_unrealized_pnl",
             "unrealized_roi",
             "unrealized_win_count",
-            "unrealized_win_rate"
+            "unrealized_win_rate",
         ]
         for column in profile_columns:
             try:
@@ -153,11 +130,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Unrealized P&L migration")
-    parser.add_argument(
-        "--downgrade",
-        action="store_true",
-        help="Downgrade: remove unrealized P&L columns"
-    )
+    parser.add_argument("--downgrade", action="store_true", help="Downgrade: remove unrealized P&L columns")
     args = parser.parse_args()
 
     if args.downgrade:

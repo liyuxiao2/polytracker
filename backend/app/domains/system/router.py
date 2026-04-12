@@ -1,18 +1,19 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.database import get_session
-from app.domains.traders.schema import DashboardStats
 from app.domains.system.service import SystemService
+from app.domains.traders.schema import DashboardStats
 
 router = APIRouter()
 system_service = SystemService()
 
+
 @router.get("/stats", response_model=DashboardStats)
-async def get_dashboard_stats(
-    session: AsyncSession = Depends(get_session)
-):
+async def get_dashboard_stats(session: AsyncSession = Depends(get_session)):
     """Get high-level dashboard statistics."""
     return await system_service.get_dashboard_stats(session)
+
 
 @router.post("/resolve/bulk")
 async def bulk_resolve_trades(
@@ -20,14 +21,15 @@ async def bulk_resolve_trades(
 ):
     """Bulk-resolve all unresolved trades."""
     from app.domains.markets.service import MarketService
+
     market_service = MarketService()
     return await market_service.bulk_resolve_trades(concurrency)
 
+
 @router.get("/backtesting/stats")
-async def get_backtesting_stats(
-    session: AsyncSession = Depends(get_session)
-):
+async def get_backtesting_stats(session: AsyncSession = Depends(get_session)):
     """Get statistics about backtesting data collection."""
     from app.domains.markets.service import MarketService
+
     market_service = MarketService()
     return await market_service.get_backtesting_stats(session)

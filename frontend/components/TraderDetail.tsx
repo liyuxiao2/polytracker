@@ -1,6 +1,6 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
+import { useEffect, useState } from 'react';
 import {
   X,
   TrendingUp,
@@ -10,7 +10,7 @@ import {
   Trophy,
   XCircle,
   Clock,
-} from "lucide-react";
+} from 'lucide-react';
 import {
   LineChart,
   Line,
@@ -20,15 +20,10 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
-} from "recharts";
-import { TraderProfile, Trade } from "@/lib/types";
-import { api } from "@/lib/api";
-import {
-  formatCurrency,
-  shortenAddress,
-  getScoreColor,
-  formatRelativeTime,
-} from "@/lib/utils";
+} from 'recharts';
+import { TraderProfile, Trade } from '@/lib/types';
+import { api } from '@/lib/api';
+import { formatCurrency, shortenAddress, getScoreColor, formatRelativeTime } from '@/lib/utils';
 
 interface TraderDetailProps {
   address: string;
@@ -51,7 +46,7 @@ export default function TraderDetail({ address, onClose }: TraderDetailProps) {
         setProfile(profileData);
         setTrades(tradesData);
       } catch (error) {
-        console.error("Error fetching trader data:", error);
+        console.error('Error fetching trader data:', error);
       } finally {
         setLoading(false);
       }
@@ -115,9 +110,7 @@ export default function TraderDetail({ address, onClose }: TraderDetailProps) {
         {/* Header */}
         <div className="sticky top-0 bg-slate-900 border-b border-slate-700 px-6 py-4 flex items-center justify-between z-10">
           <div>
-            <h2 className="text-xl font-bold text-white mb-1">
-              Trader Profile
-            </h2>
+            <h2 className="text-xl font-bold text-white mb-1">Trader Profile</h2>
             <a
               href={`https://polymarket.com/profile/${address}`}
               target="_blank"
@@ -127,10 +120,7 @@ export default function TraderDetail({ address, onClose }: TraderDetailProps) {
               {address}
             </a>
           </div>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-white transition-colors"
-          >
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
             <X className="h-6 w-6" />
           </button>
         </div>
@@ -142,9 +132,7 @@ export default function TraderDetail({ address, onClose }: TraderDetailProps) {
               <TrendingUp className="h-4 w-4 text-blue-400" />
               <p className="text-xs text-slate-400 uppercase">Insider Score</p>
             </div>
-            <p
-              className={`text-2xl font-bold ${getScoreColor(profile.insider_score)}`}
-            >
+            <p className={`text-2xl font-bold ${getScoreColor(profile.insider_score)}`}>
               {profile.insider_score.toFixed(1)}
             </p>
           </div>
@@ -154,9 +142,7 @@ export default function TraderDetail({ address, onClose }: TraderDetailProps) {
               <Activity className="h-4 w-4 text-green-400" />
               <p className="text-xs text-slate-400 uppercase">Total Trades</p>
             </div>
-            <p className="text-2xl font-bold text-white">
-              {profile.total_trades}
-            </p>
+            <p className="text-2xl font-bold text-white">{profile.total_trades}</p>
           </div>
 
           <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
@@ -164,9 +150,7 @@ export default function TraderDetail({ address, onClose }: TraderDetailProps) {
               <DollarSign className="h-4 w-4 text-yellow-400" />
               <p className="text-xs text-slate-400 uppercase">Avg Bet Size</p>
             </div>
-            <p className="text-2xl font-bold text-white">
-              {formatCurrency(profile.avg_bet_size)}
-            </p>
+            <p className="text-2xl font-bold text-white">{formatCurrency(profile.avg_bet_size)}</p>
           </div>
 
           <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
@@ -174,18 +158,14 @@ export default function TraderDetail({ address, onClose }: TraderDetailProps) {
               <AlertCircle className="h-4 w-4 text-red-400" />
               <p className="text-xs text-slate-400 uppercase">Flagged Trades</p>
             </div>
-            <p className="text-2xl font-bold text-white">
-              {profile.flagged_trades_count}
-            </p>
+            <p className="text-2xl font-bold text-white">{profile.flagged_trades_count}</p>
           </div>
         </div>
 
         {/* Chart */}
         <div className="px-6 pb-6">
           <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">
-              Bet Size Over Time
-            </h3>
+            <h3 className="text-lg font-semibold text-white mb-4">Bet Size Over Time</h3>
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData}>
@@ -193,30 +173,27 @@ export default function TraderDetail({ address, onClose }: TraderDetailProps) {
                   <XAxis
                     dataKey="timestamp"
                     stroke="#94a3b8"
-                    tick={{ fill: "#94a3b8", fontSize: 12 }}
+                    tick={{ fill: '#94a3b8', fontSize: 12 }}
                   />
                   <YAxis
                     stroke="#94a3b8"
-                    tick={{ fill: "#94a3b8", fontSize: 12 }}
+                    tick={{ fill: '#94a3b8', fontSize: 12 }}
                     tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
                   />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: "#1e293b",
-                      border: "1px solid #334155",
-                      borderRadius: "8px",
-                      color: "#fff",
+                      backgroundColor: '#1e293b',
+                      border: '1px solid #334155',
+                      borderRadius: '8px',
+                      color: '#fff',
                     }}
-                    formatter={(value: any) => [
-                      formatCurrency(value),
-                      "Trade Size",
-                    ]}
+                    formatter={(value: any) => [formatCurrency(value), 'Trade Size']}
                   />
                   <ReferenceLine
                     y={profile.avg_bet_size}
                     stroke="#22d3ee"
                     strokeDasharray="5 5"
-                    label={{ value: "Baseline", fill: "#22d3ee", fontSize: 12 }}
+                    label={{ value: 'Baseline', fill: '#22d3ee', fontSize: 12 }}
                   />
                   <Line
                     type="monotone"
@@ -231,8 +208,8 @@ export default function TraderDetail({ address, onClose }: TraderDetailProps) {
                           cx={cx}
                           cy={cy}
                           r={payload.isFlagged ? 6 : 4}
-                          fill={payload.isFlagged ? "#ef4444" : "#3b82f6"}
-                          stroke={payload.isFlagged ? "#dc2626" : "#2563eb"}
+                          fill={payload.isFlagged ? '#ef4444' : '#3b82f6'}
+                          stroke={payload.isFlagged ? '#dc2626' : '#2563eb'}
                           strokeWidth={2}
                         />
                       );
@@ -264,9 +241,7 @@ export default function TraderDetail({ address, onClose }: TraderDetailProps) {
         <div className="px-6 pb-6">
           <div className="bg-slate-800 border border-slate-700 rounded-lg overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-700">
-              <h3 className="text-lg font-semibold text-white">
-                Recent Trades
-              </h3>
+              <h3 className="text-lg font-semibold text-white">Recent Trades</h3>
             </div>
             <div className="max-h-96 overflow-y-auto">
               <table className="w-full">
@@ -313,11 +288,9 @@ export default function TraderDetail({ address, onClose }: TraderDetailProps) {
                         {formatCurrency(trade.trade_size_usd)}
                       </td>
                       <td className="px-6 py-4 text-sm text-slate-300">
-                        {trade.z_score?.toFixed(2) || "N/A"}
+                        {trade.z_score?.toFixed(2) || 'N/A'}
                       </td>
-                      <td className="px-6 py-4">
-                        {getOutcomeBadge(trade.is_win)}
-                      </td>
+                      <td className="px-6 py-4">{getOutcomeBadge(trade.is_win)}</td>
                       <td className="px-6 py-4 text-sm text-slate-400">
                         {formatRelativeTime(trade.timestamp)}
                       </td>
