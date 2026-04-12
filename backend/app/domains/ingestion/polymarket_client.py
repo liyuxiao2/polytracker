@@ -138,11 +138,7 @@ class PolymarketClient:
             return []
 
     async def search_markets(
-        self, 
-        query: str = "", 
-        limit: int = 500, 
-        max_pages: int = 5,
-        allow_closed: bool = False
+        self, query: str = "", limit: int = 500, max_pages: int = 5, allow_closed: bool = False
     ) -> List[dict]:
         """
         Search markets by question text using Gamma API.
@@ -154,18 +150,11 @@ class PolymarketClient:
         try:
             for closed_status in statuses:
                 for i in range(max_pages):
-                    params = {
-                        "limit": limit, 
-                        "offset": i * limit,
-                        "closed": "true" if closed_status else "false"
-                    }
-                    response = await self.client.get(
-                        f"{self.gamma_api_base}/markets",
-                        params=params
-                    )
+                    params = {"limit": limit, "offset": i * limit, "closed": "true" if closed_status else "false"}
+                    response = await self.client.get(f"{self.gamma_api_base}/markets", params=params)
                     response.raise_for_status()
                     all_markets = response.json()
-                    
+
                     if not all_markets:
                         break
 

@@ -25,14 +25,14 @@ class DataIngestionService:
         self.trade_fetch_limit = int(os.getenv("TRADE_FETCH_LIMIT", "1000"))
 
         # Add market filtering support
-        from app.core.config import get_settings
+
         self.settings = get_settings()
         self.tracked_markets = set(self.settings.tracked_market_id_list)
 
         if self.tracked_markets:
             logger.info(f"[Worker] Tracking {len(self.tracked_markets)} specific markets: {list(self.tracked_markets)}")
         else:
-            logger.info(f"[Worker] Tracking ALL markets (no filter configured)")
+            logger.info("[Worker] Tracking ALL markets (no filter configured)")
 
     async def process_trades(self) -> dict:
         import time
@@ -204,7 +204,7 @@ class DataIngestionService:
         target_market_ids: set = None,
         days_back: int = None,
         stop_on_duplicates: bool = False,
-        batch_size: int = 500
+        batch_size: int = 500,
     ):
         """
         Optimized backfill with bulk inserts and minimal overhead.
@@ -221,7 +221,7 @@ class DataIngestionService:
         """
         logger.info(f"[Backfill] Starting optimized backfill (max {max_pages} pages)...")
 
-        from app.core.config import get_settings
+
         settings = get_settings()
         rate_limit_delay = settings.backfill_rate_limit_delay
 
@@ -239,10 +239,7 @@ class DataIngestionService:
         async with async_session_maker() as session:
             for page in range(max_pages):
                 # Fetch page of trades
-                trades = await self.client.get_historical_trades(
-                    before_timestamp=oldest_timestamp,
-                    limit=500
-                )
+                trades = await self.client.get_historical_trades(before_timestamp=oldest_timestamp, limit=500)
 
                 if not trades:
                     logger.info(f"[Backfill] No more trades found after {pages_fetched} pages")
@@ -282,7 +279,7 @@ class DataIngestionService:
 
                 # Check cutoff date
                 if cutoff_date and oldest_date < cutoff_date:
-                    logger.info(f"[Backfill] Reached target date, stopping")
+                    logger.info("[Backfill] Reached target date, stopping")
                     break
 
                 # Rate limiting
@@ -337,7 +334,7 @@ class DataIngestionService:
                 timestamp=timestamp,
                 trade_hour_utc=timestamp.hour,
                 is_flagged=False,
-                z_score=None
+                z_score=None,
             )
 
             return trade
@@ -362,27 +359,29 @@ class DataIngestionService:
             # Build list of dictionaries for bulk insert
             trade_dicts = []
             for t in trades:
-                trade_dicts.append({
-                    "transaction_hash": t.transaction_hash,
-                    "wallet_address": t.wallet_address,
-                    "market_id": t.market_id,
-                    "market_slug": t.market_slug,
-                    "market_name": t.market_name,
-                    "trade_size_usd": t.trade_size_usd,
-                    "outcome": t.outcome,
-                    "price": t.price,
-                    "side": t.side,
-                    "asset_id": t.asset_id,
-                    "timestamp": t.timestamp,
-                    "trade_hour_utc": t.trade_hour_utc,
-                    "is_flagged": t.is_flagged,
-                    "z_score": t.z_score
-                })
+                trade_dicts.append(
+                    {
+                        "transaction_hash": t.transaction_hash,
+                        "wallet_address": t.wallet_address,
+                        "market_id": t.market_id,
+                        "market_slug": t.market_slug,
+                        "market_name": t.market_name,
+                        "trade_size_usd": t.trade_size_usd,
+                        "outcome": t.outcome,
+                        "price": t.price,
+                        "side": t.side,
+                        "asset_id": t.asset_id,
+                        "timestamp": t.timestamp,
+                        "trade_hour_utc": t.trade_hour_utc,
+                        "is_flagged": t.is_flagged,
+                        "z_score": t.z_score,
+                    }
+                )
 
             # Bulk insert with ON CONFLICT DO NOTHING
             stmt = insert(Trade).values(trade_dicts)
             stmt = stmt.on_conflict_do_nothing(
-                index_elements=['transaction_hash']  # Unique index
+                index_elements=["transaction_hash"]  # Unique index
             )
 
             await session.execute(stmt)
@@ -403,11 +402,7 @@ class DataIngestionService:
 
             return count
 
-    async def backfill_multiple_markets_parallel(
-        self,
-        market_ids: List[str],
-        max_pages_per_market: int = 10000
-    ):
+    async def backfill_multiple_markets_parallel(self, market_ids: List[str], max_pages_per_market: int = 10000):
         """
         Backfill multiple markets in parallel using asyncio.gather.
         Each market gets its own backfill task running concurrently.
@@ -425,9 +420,7 @@ class DataIngestionService:
         tasks = []
         for market_id in market_ids:
             task = self.backfill_historical_trades(
-                max_pages=max_pages_per_market,
-                target_market_ids={market_id},
-                stop_on_duplicates=False
+                max_pages=max_pages_per_market, target_market_ids={market_id}, stop_on_duplicates=False
             )
             tasks.append(task)
 
