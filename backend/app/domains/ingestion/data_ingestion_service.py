@@ -30,9 +30,7 @@ class DataIngestionService:
         self.tracked_markets = set(self.settings.tracked_market_id_list)
 
         if self.tracked_markets:
-            logger.info(
-                f"[Ingestion] Tracking {len(self.tracked_markets)} specific markets: {list(self.tracked_markets)}"
-            )
+            logger.info(f"[Worker] Tracking {len(self.tracked_markets)} specific markets: {list(self.tracked_markets)}")
         else:
             logger.info("[Worker] Tracking ALL markets (no filter configured)")
 
@@ -82,6 +80,7 @@ class DataIngestionService:
                 existing = await self.trader_repo.get_trade_by_transaction_hash(session, transaction_hash)
                 if existing:
                     return None
+
             market_slug = trade_data.get("event_slug", "")
             market_name = trade_data.get("market_name", "Unknown Market")
             timestamp = datetime.fromtimestamp(int(trade_data.get("timestamp", 0)) / 1000)
@@ -222,6 +221,7 @@ class DataIngestionService:
         """
         logger.info(f"[Backfill] Starting optimized backfill (max {max_pages} pages)...")
 
+
         settings = get_settings()
         rate_limit_delay = settings.backfill_rate_limit_delay
 
@@ -295,7 +295,7 @@ class DataIngestionService:
         logger.info(f"[Backfill] Complete: {total_new} trades inserted, {pages_fetched} pages fetched")
         return total_new
 
-    def _create_trade_object_for_bulk(self, trade_data: dict) -> Trade | None:
+    def _create_trade_object_for_bulk(self, trade_data: dict) -> Optional[Trade]:
         """
         Create Trade object without database queries (for bulk insert).
         Skips Z-score calculation and deduplication checks for speed.
@@ -342,7 +342,7 @@ class DataIngestionService:
             logger.error(f"Error creating trade object: {e}")
             return None
 
-    async def _bulk_insert_trades(self, session: AsyncSession, trades: list[Trade]) -> int:
+    async def _bulk_insert_trades(self, session: AsyncSession, trades: List[Trade]) -> int:
         """
         Bulk insert trades using PostgreSQL ON CONFLICT DO NOTHING.
         Returns estimated count of successfully inserted trades.
@@ -402,7 +402,7 @@ class DataIngestionService:
 
             return count
 
-    async def backfill_multiple_markets_parallel(self, market_ids: list[str], max_pages_per_market: int = 10000):
+    async def backfill_multiple_markets_parallel(self, market_ids: List[str], max_pages_per_market: int = 10000):
         """
         Backfill multiple markets in parallel using asyncio.gather.
         Each market gets its own backfill task running concurrently.

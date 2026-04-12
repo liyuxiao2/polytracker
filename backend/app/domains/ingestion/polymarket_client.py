@@ -139,7 +139,7 @@ class PolymarketClient:
 
     async def search_markets(
         self, query: str = "", limit: int = 500, max_pages: int = 5, allow_closed: bool = False
-    ) -> list[dict]:
+    ) -> List[dict]:
         """
         Search markets by question text using Gamma API.
         Note: Polymarket doesn't have a search endpoint, so we fetch
