@@ -181,7 +181,7 @@ export default function TraderDetail({ address, onClose }: TraderDetailProps) {
                       borderRadius: "8px",
                       color: "#fff",
                     }}
-                    formatter={(value: any) => [
+                    formatter={(value: number) => [
                       formatCurrency(value),
                       "Trade Size",
                     ]}
@@ -197,7 +197,7 @@ export default function TraderDetail({ address, onClose }: TraderDetailProps) {
                     dataKey="tradeSize"
                     stroke="#3b82f6"
                     strokeWidth={2}
-                    dot={(props: any) => {
+                    dot={(props: { cx: number; cy: number; payload: { index: number; isFlagged: boolean } }) => {
                       const { cx, cy, payload } = props;
                       return (
                         <circle

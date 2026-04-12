@@ -7,6 +7,23 @@ from difflib import SequenceMatcher
 logger = logging.getLogger(__name__)
 
 
+def _transform_trade(t: dict) -> dict:
+    """Transform raw Polymarket trade data to consistent internal format."""
+    return {
+        "id": t.get("transactionHash", ""),
+        "market": t.get("conditionId", ""),
+        "market_name": t.get("title", "Unknown"),
+        "asset_id": t.get("asset", ""),
+        "maker_address": t.get("proxyWallet", ""),
+        "price": float(t.get("price", 0)),
+        "side": t.get("side", ""),
+        "size": float(t.get("size", 0)),
+        "timestamp": int(t.get("timestamp", 0)) * 1000,
+        "outcome": t.get("outcome", ""),
+        "event_slug": t.get("eventSlug", ""),
+    }
+
+
 class PolymarketClient:
     def __init__(self):
         self.data_api_base = os.getenv("POLYMARKET_DATA_API", "https://data-api.polymarket.com")
@@ -26,23 +43,7 @@ class PolymarketClient:
             response.raise_for_status()
             trades = response.json()
 
-            # Transform to consistent format
-            result = []
-            for t in trades:
-                result.append({
-                    "id": t.get("transactionHash", ""),
-                    "market": t.get("conditionId", ""),
-                    "market_name": t.get("title", "Unknown"),
-                    "asset_id": t.get("asset", ""),
-                    "maker_address": t.get("proxyWallet", ""),
-                    "price": float(t.get("price", 0)),
-                    "side": t.get("side", ""),
-                    "size": float(t.get("size", 0)),
-                    "timestamp": int(t.get("timestamp", 0)) * 1000,  # Convert to ms
-                    "outcome": t.get("outcome", ""),
-                    "event_slug": t.get("eventSlug", ""),
-                })
-            return result
+            return [_transform_trade(t) for t in trades]
         except Exception as e:
             logger.error(f"Error fetching trades: {e}")
             return []
@@ -298,23 +299,7 @@ class PolymarketClient:
             response.raise_for_status()
             trades = response.json()
 
-            # Transform to consistent format
-            result = []
-            for t in trades:
-                result.append({
-                    "id": t.get("transactionHash", ""),
-                    "market": t.get("conditionId", ""),
-                    "market_name": t.get("title", "Unknown"),
-                    "asset_id": t.get("asset", ""),
-                    "maker_address": t.get("proxyWallet", ""),
-                    "price": float(t.get("price", 0)),
-                    "side": t.get("side", ""),
-                    "size": float(t.get("size", 0)),
-                    "timestamp": int(t.get("timestamp", 0)) * 1000,
-                    "outcome": t.get("outcome", ""),
-                    "event_slug": t.get("eventSlug", ""),
-                })
-            return result
+            return [_transform_trade(t) for t in trades]
         except Exception as e:
             logger.error(f"Error fetching historical trades: {e}")
             return []
