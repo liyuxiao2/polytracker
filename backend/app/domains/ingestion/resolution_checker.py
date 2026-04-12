@@ -1,13 +1,14 @@
 import asyncio
 import random
 from datetime import datetime, timedelta
-from sqlalchemy import select, distinct, and_
+
+from sqlalchemy import and_, distinct, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import Trade, Market, async_session_maker
-from app.domains.ingestion.polymarket_client import PolymarketClient
-from app.domains.ingestion.insider_detector import InsiderDetector
 from app.core.config import get_settings
+from app.core.database import Market, Trade, async_session_maker
+from app.domains.ingestion.insider_detector import InsiderDetector
+from app.domains.ingestion.polymarket_client import PolymarketClient
 
 
 class ResolutionChecker:
@@ -59,9 +60,7 @@ class ResolutionChecker:
         async with async_session_maker() as session:
             # Get unique market IDs with unresolved trades
             result = await session.execute(
-                select(distinct(Trade.market_id))
-                .where(Trade.is_resolved == False)
-                .limit(50)
+                select(distinct(Trade.market_id)).where(Trade.is_resolved == False).limit(50)
             )
             unresolved_market_ids = [row[0] for row in result.all()]
 
@@ -108,13 +107,7 @@ class ResolutionChecker:
 
         # Get all trades for this market
         trades_result = await session.execute(
-            select(Trade)
-            .where(
-                and_(
-                    Trade.market_id == market_id,
-                    Trade.is_resolved == False
-                )
-            )
+            select(Trade).where(and_(Trade.market_id == market_id, Trade.is_resolved == False))
         )
         trades = list(trades_result.scalars().all())
 
@@ -126,7 +119,7 @@ class ResolutionChecker:
             # If they bought YES and it resolved YES, they won
             # If they bought NO and it resolved NO, they won
             trade_outcome = trade.outcome  # What they bet on (YES/NO)
-            is_win = (trade_outcome == resolved_outcome)
+            is_win = trade_outcome == resolved_outcome
 
             # Calculate PnL
             # If won: payout = size * (1 / price) - size = size * (1 - price) / price
@@ -163,9 +156,7 @@ class ResolutionChecker:
 
     async def _update_market_record(self, market_id: str, market_data: dict, session: AsyncSession):
         """Update or create market record."""
-        result = await session.execute(
-            select(Market).where(Market.market_id == market_id)
-        )
+        result = await session.execute(select(Market).where(Market.market_id == market_id))
         market = result.scalar_one_or_none()
 
         if market:
@@ -181,7 +172,7 @@ class ResolutionChecker:
                 is_resolved=True,
                 resolved_outcome=market_data.get("resolved_outcome"),
                 resolution_time=datetime.utcnow(),
-                last_checked=datetime.utcnow()
+                last_checked=datetime.utcnow(),
             )
             session.add(market)
 
@@ -201,14 +192,7 @@ class ResolutionChecker:
             # Get unresolved trades older than 30 seconds (simulate quick resolution)
             cutoff = datetime.utcnow() - timedelta(seconds=30)
             result = await session.execute(
-                select(Trade)
-                .where(
-                    and_(
-                        Trade.is_resolved == False,
-                        Trade.timestamp <= cutoff
-                    )
-                )
-                .limit(50)
+                select(Trade).where(and_(Trade.is_resolved == False, Trade.timestamp <= cutoff)).limit(50)
             )
             unresolved_trades = list(result.scalars().all())
 
@@ -257,7 +241,9 @@ class ResolutionChecker:
                 await self.detector.update_trader_profile(wallet, session)
 
             await session.commit()
-            print(f"[ResolutionChecker] Mock resolved {len(unresolved_trades)} trades, updated {len(wallets_to_update)} profiles")
+            print(
+                f"[ResolutionChecker] Mock resolved {len(unresolved_trades)} trades, updated {len(wallets_to_update)} profiles"
+            )
 
 
 # Global instance

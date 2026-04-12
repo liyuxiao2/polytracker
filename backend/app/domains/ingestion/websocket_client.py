@@ -1,10 +1,12 @@
 import asyncio
-import json
-import hmac
-import hashlib
 import base64
+import hashlib
+import hmac
+import json
 import time
-from typing import Callable, Optional, List, Dict, Any
+from collections.abc import Callable
+from typing import Any
+
 import websockets
 from websockets.exceptions import ConnectionClosed
 
@@ -30,25 +32,25 @@ class PolymarketWebSocketClient:
         self.api_secret = settings.polymarket_api_secret.strip() if settings.polymarket_api_secret else None
         self.api_passphrase = settings.polymarket_api_passphrase.strip() if settings.polymarket_api_passphrase else None
 
-        self.websocket: Optional[websockets.WebSocketClientProtocol] = None
+        self.websocket: websockets.WebSocketClientProtocol | None = None
         self.is_connected = False
-        self.subscribed_tokens: List[str] = []
-        self._message_handlers: List[Callable[[dict], None]] = []
-        self._ping_task: Optional[asyncio.Task] = None
-        self._listen_task: Optional[asyncio.Task] = None
+        self.subscribed_tokens: list[str] = []
+        self._message_handlers: list[Callable[[dict], None]] = []
+        self._ping_task: asyncio.Task | None = None
+        self._listen_task: asyncio.Task | None = None
 
     def _pad_base64(self, data: str) -> str:
         """Add padding to base64 string if needed."""
         if not data:
             return ""
         # Remove all whitespace and existing padding
-        data = "".join(data.split()).rstrip('=')
+        data = "".join(data.split()).rstrip("=")
         missing_padding = len(data) % 4
         if missing_padding:
-            data += '=' * (4 - missing_padding)
+            data += "=" * (4 - missing_padding)
         return data
 
-    def _create_auth_message(self) -> Dict[str, Any]:
+    def _create_auth_message(self) -> dict[str, Any]:
         """Create authentication message for WebSocket connection."""
         if not all([self.api_key, self.api_secret, self.api_passphrase]):
             return {}
@@ -64,12 +66,8 @@ class PolymarketWebSocketClient:
             print(f"[WebSocket] Auth warning: Could not decode secret ({e}).")
             return {}
 
-        signature = hmac.new(
-            secret_bytes,
-            message.encode('utf-8'),
-            hashlib.sha256
-        ).digest()
-        signature_b64 = base64.b64encode(signature).decode('utf-8')
+        signature = hmac.new(secret_bytes, message.encode("utf-8"), hashlib.sha256).digest()
+        signature_b64 = base64.b64encode(signature).decode("utf-8")
 
         return {
             "apiKey": self.api_key,
@@ -129,7 +127,7 @@ class PolymarketWebSocketClient:
             await self.websocket.close()
             print("[WebSocket] Disconnected from Polymarket")
 
-    async def subscribe_to_market(self, token_ids: List[str]):
+    async def subscribe_to_market(self, token_ids: list[str]):
         """
         Subscribe to market channel for specific token IDs.
         Receives orderbook updates for these tokens.
@@ -171,7 +169,7 @@ class PolymarketWebSocketClient:
         await self.websocket.send(json.dumps(message))
         print("[WebSocket] Subscribed to user channel")
 
-    async def unsubscribe_from_market(self, token_ids: List[str]):
+    async def unsubscribe_from_market(self, token_ids: list[str]):
         """Unsubscribe from market updates for specific tokens."""
         if not self.is_connected or not self.websocket:
             return
@@ -228,7 +226,7 @@ class PolymarketWebSocketClient:
                 print("[WebSocket] Connection closed")
                 self.is_connected = False
                 break
-            except Exception as e:
+            except Exception:
                 # Silently wait on connection errors to avoid spamming
                 await asyncio.sleep(1)
                 if not self.is_connected:
@@ -248,7 +246,7 @@ class PolymarketWebSocketClient:
 
 
 # Message type handlers for trade processing
-def parse_trade_from_ws_message(message: dict) -> Optional[dict]:
+def parse_trade_from_ws_message(message: dict) -> dict | None:
     """
     Parse a WebSocket message into a trade format.
     Returns None if message is not a trade.
@@ -291,7 +289,7 @@ def parse_trade_from_ws_message(message: dict) -> Optional[dict]:
 
 
 # Global WebSocket client instance
-_ws_client: Optional[PolymarketWebSocketClient] = None
+_ws_client: PolymarketWebSocketClient | None = None
 
 
 async def get_ws_client() -> PolymarketWebSocketClient:

@@ -17,6 +17,9 @@ greenlet==3.2.4
 pytest==8.0.0
 pytest-asyncio==0.23.3
 
+# Linting & formatting
+ruff==0.4.4
+
 # Optional: For generating Polymarket API credentials
 # pip install py-clob-client
 # py-clob-client>=0.16.0

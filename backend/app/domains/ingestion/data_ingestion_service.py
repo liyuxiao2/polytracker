@@ -1,17 +1,20 @@
-import logging
-from typing import Optional, List
-from datetime import datetime, timedelta
 import asyncio
-import uuid
+import logging
 import os
+import uuid
+from datetime import datetime, timedelta
+
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.database import Trade, async_session_maker
-from app.domains.traders.repository import TraderRepository
-from app.domains.ingestion.polymarket_client import PolymarketClient
-from app.domains.ingestion.insider_detector import InsiderDetector
+
 from app.core.config import get_settings
+from app.core.database import Trade, async_session_maker
+from app.domains.ingestion.insider_detector import InsiderDetector
+from app.domains.ingestion.polymarket_client import PolymarketClient
+from app.domains.traders.repository import TraderRepository
 
 logger = logging.getLogger(__name__)
+
 
 class DataIngestionService:
     def __init__(self):
@@ -33,6 +36,7 @@ class DataIngestionService:
 
     async def process_trades(self) -> dict:
         import time
+
         start_time = time.time()
         new_trades = 0
         flagged_trades = 0
@@ -51,11 +55,13 @@ class DataIngestionService:
             await session.commit()
             total_time = time.time() - start_time
             if new_trades > 0:
-                logger.info(f"[Ingestion] Ingested {new_trades} new trades ({flagged_trades} flagged) [fetch: {fetch_time:.1f}s, total: {total_time:.1f}s]")
-                
+                logger.info(
+                    f"[Ingestion] Ingested {new_trades} new trades ({flagged_trades} flagged) [fetch: {fetch_time:.1f}s, total: {total_time:.1f}s]"
+                )
+
         return {"new_trades": new_trades, "flagged_trades": flagged_trades}
 
-    async def process_single_trade(self, trade_data: dict, session: AsyncSession) -> Optional[Trade]:
+    async def process_single_trade(self, trade_data: dict, session: AsyncSession) -> Trade | None:
         try:
             # Filter by tracked markets if configured
             market_id = trade_data.get("market", "")
@@ -87,8 +93,10 @@ class DataIngestionService:
             asset_id = trade_data.get("asset_id", "")
 
             z_score, is_flagged = await self.detector.calculate_z_score(
-                wallet_address, trade_size_usd, session,
-                tracked_markets=self.tracked_markets if self.tracked_markets else None
+                wallet_address,
+                trade_size_usd,
+                session,
+                tracked_markets=self.tracked_markets if self.tracked_markets else None,
             )
 
             flag_reason = None
@@ -121,8 +129,7 @@ class DataIngestionService:
 
             if is_flagged:
                 profile = await self.detector.update_trader_profile(
-                    wallet_address, session,
-                    tracked_markets=self.tracked_markets if self.tracked_markets else None
+                    wallet_address, session, tracked_markets=self.tracked_markets if self.tracked_markets else None
                 )
                 if profile and profile.total_trades < 50:
                     asyncio.create_task(self.backfill_trader_history(wallet_address))
@@ -146,23 +153,23 @@ class DataIngestionService:
                     txn_hash = item.get("transactionHash")
                     if not txn_hash:
                         continue
-                        
+
                     existing = await self.trader_repo.get_trade_by_transaction_hash(session, txn_hash)
                     if existing:
                         continue
-                        
+
                     market_id = item.get("conditionId") or ""
                     if item.get("type", "").upper() not in ("TRADE", "ERC1155_TRANSFER", "CTF_TRADE"):
                         continue
-                        
+
                     price = float(item.get("price", 0))
                     size = float(item.get("usdcSize", 0))
-                    
+
                     if self.min_trade_size > 0 and size < self.min_trade_size:
                         continue
-                        
+
                     timestamp = datetime.fromtimestamp(int(item.get("timestamp", 0)))
-                    
+
                     trade = Trade(
                         wallet_address=wallet_address,
                         market_id=market_id,
@@ -175,20 +182,19 @@ class DataIngestionService:
                         is_flagged=False,
                         side=item.get("side", "").upper(),
                         transaction_hash=txn_hash,
-                        trade_hour_utc=timestamp.hour
+                        trade_hour_utc=timestamp.hour,
                     )
-                    
+
                     session.add(trade)
                     count += 1
-                
+
                 await session.commit()
                 if count > 0:
                     logger.info(f"[Ingestion] Backfilled {count} trades for {wallet_address}")
                     await self.detector.update_trader_profile(
-                        wallet_address, session,
-                        tracked_markets=self.tracked_markets if self.tracked_markets else None
+                        wallet_address, session, tracked_markets=self.tracked_markets if self.tracked_markets else None
                     )
-                    
+
         except Exception as e:
             logger.error(f"[Ingestion] Error backfilling {wallet_address}: {e}")
 

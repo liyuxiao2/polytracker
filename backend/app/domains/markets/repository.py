@@ -1,8 +1,10 @@
-from typing import List, Optional, Tuple
 from datetime import datetime
+
+from sqlalchemy import asc, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc, asc
-from app.core.database import Market, Trade, TrackedMarket, MarketSnapshot, PriceHistory
+
+from app.core.database import Market, MarketSnapshot, PriceHistory, TrackedMarket, Trade
+
 
 class MarketRepository:
     """
@@ -10,8 +12,8 @@ class MarketRepository:
     """
 
     async def get_market_watch(
-        self, session: AsyncSession, category: Optional[str], sort_by: str, sort_order: str, limit: int
-    ) -> List[Market]:
+        self, session: AsyncSession, category: str | None, sort_by: str, sort_order: str, limit: int
+    ) -> list[Market]:
         query = select(Market).where(Market.is_resolved == False)
 
         if category:
@@ -37,9 +39,7 @@ class MarketRepository:
         result = await session.execute(query)
         return list(result.scalars().all())
 
-    async def get_market_trades(
-        self, session: AsyncSession, market_id: str, offset: int, limit: int
-    ) -> List[Trade]:
+    async def get_market_trades(self, session: AsyncSession, market_id: str, offset: int, limit: int) -> list[Trade]:
         result = await session.execute(
             select(Trade)
             .where(Trade.market_id == market_id)
@@ -49,17 +49,13 @@ class MarketRepository:
         )
         return list(result.scalars().all())
 
-    async def get_market_trades_count(
-        self, session: AsyncSession, market_id: str
-    ) -> int:
-        result = await session.execute(
-            select(func.count()).where(Trade.market_id == market_id)
-        )
+    async def get_market_trades_count(self, session: AsyncSession, market_id: str) -> int:
+        result = await session.execute(select(func.count()).where(Trade.market_id == market_id))
         return result.scalar() or 0
 
     async def get_tracked_markets(
-        self, session: AsyncSession, category: Optional[str], active_only: bool, limit: int
-    ) -> List[TrackedMarket]:
+        self, session: AsyncSession, category: str | None, active_only: bool, limit: int
+    ) -> list[TrackedMarket]:
         query = select(TrackedMarket)
 
         if active_only:
@@ -72,17 +68,18 @@ class MarketRepository:
         result = await session.execute(query)
         return list(result.scalars().all())
 
-    async def get_tracked_market_by_id(
-        self, session: AsyncSession, market_id: str
-    ) -> Optional[TrackedMarket]:
-        result = await session.execute(
-            select(TrackedMarket).where(TrackedMarket.market_id == market_id)
-        )
+    async def get_tracked_market_by_id(self, session: AsyncSession, market_id: str) -> TrackedMarket | None:
+        result = await session.execute(select(TrackedMarket).where(TrackedMarket.market_id == market_id))
         return result.scalar_one_or_none()
 
     async def get_market_snapshots(
-        self, session: AsyncSession, market_id: str, start_time: Optional[datetime], end_time: Optional[datetime], limit: int
-    ) -> List[MarketSnapshot]:
+        self,
+        session: AsyncSession,
+        market_id: str,
+        start_time: datetime | None,
+        end_time: datetime | None,
+        limit: int,
+    ) -> list[MarketSnapshot]:
         query = select(MarketSnapshot).where(MarketSnapshot.market_id == market_id)
 
         if start_time:
@@ -95,9 +92,15 @@ class MarketRepository:
         return list(result.scalars().all())
 
     async def get_price_history(
-        self, session: AsyncSession, market_id: str, outcome: Optional[str],
-        start_time: Optional[datetime], end_time: Optional[datetime], interval: Optional[str], limit: int
-    ) -> List[PriceHistory]:
+        self,
+        session: AsyncSession,
+        market_id: str,
+        outcome: str | None,
+        start_time: datetime | None,
+        end_time: datetime | None,
+        interval: str | None,
+        limit: int,
+    ) -> list[PriceHistory]:
         query = select(PriceHistory).where(PriceHistory.market_id == market_id)
 
         if outcome:
@@ -113,42 +116,26 @@ class MarketRepository:
         result = await session.execute(query)
         return list(result.scalars().all())
 
-    async def get_distinct_wallets_with_resolved_trades(
-        self, session: AsyncSession
-    ) -> List[str]:
-        result = await session.execute(
-            select(Trade.wallet_address)
-            .where(Trade.is_resolved == True)
-            .distinct()
-        )
+    async def get_distinct_wallets_with_resolved_trades(self, session: AsyncSession) -> list[str]:
+        result = await session.execute(select(Trade.wallet_address).where(Trade.is_resolved == True).distinct())
         return [row[0] for row in result.all()]
 
-    async def get_backtesting_stats(
-        self, session: AsyncSession
-    ) -> dict:
+    async def get_backtesting_stats(self, session: AsyncSession) -> dict:
         tracked_result = await session.execute(
             select(func.count(TrackedMarket.id)).where(TrackedMarket.is_active == True)
         )
         tracked_count = tracked_result.scalar() or 0
 
-        snapshot_result = await session.execute(
-            select(func.count(MarketSnapshot.id))
-        )
+        snapshot_result = await session.execute(select(func.count(MarketSnapshot.id)))
         snapshot_count = snapshot_result.scalar() or 0
 
-        price_result = await session.execute(
-            select(func.count(PriceHistory.id))
-        )
+        price_result = await session.execute(select(func.count(PriceHistory.id)))
         price_count = price_result.scalar() or 0
 
-        oldest_snapshot = await session.execute(
-            select(func.min(MarketSnapshot.timestamp))
-        )
+        oldest_snapshot = await session.execute(select(func.min(MarketSnapshot.timestamp)))
         oldest_ts = oldest_snapshot.scalar()
 
-        newest_snapshot = await session.execute(
-            select(func.max(MarketSnapshot.timestamp))
-        )
+        newest_snapshot = await session.execute(select(func.max(MarketSnapshot.timestamp)))
         newest_ts = newest_snapshot.scalar()
 
         return {
@@ -158,12 +145,10 @@ class MarketRepository:
             "data_range": {
                 "oldest": oldest_ts,
                 "newest": newest_ts,
-            }
+            },
         }
 
-    async def get_active_tracked_markets(
-        self, session: AsyncSession, limit: int
-    ) -> List[TrackedMarket]:
+    async def get_active_tracked_markets(self, session: AsyncSession, limit: int) -> list[TrackedMarket]:
         result = await session.execute(
             select(TrackedMarket)
             .where(TrackedMarket.is_active == True)
@@ -174,14 +159,13 @@ class MarketRepository:
 
     async def get_price_history_record(
         self, session: AsyncSession, market_id: str, token_id: str, ts: datetime
-    ) -> Optional[PriceHistory]:
+    ) -> PriceHistory | None:
         from sqlalchemy import and_
+
         result = await session.execute(
             select(PriceHistory).where(
                 and_(
-                    PriceHistory.market_id == market_id,
-                    PriceHistory.token_id == token_id,
-                    PriceHistory.timestamp == ts
+                    PriceHistory.market_id == market_id, PriceHistory.token_id == token_id, PriceHistory.timestamp == ts
                 )
             )
         )

@@ -34,7 +34,7 @@ Your primary mission is to systematically read, understand, and execute all impl
 
 6. **New API Endpoints**: When adding endpoints:
    - Add route in `backend/app/api/routes.py`
-   - Create corresponding Pydantic schema in `backend/app/schemas/trader.py`
+   - Create corresponding Pydantic schema in `backend/app/schemas/`
    - Add TypeScript fetch function in `frontend/lib/api.ts`
    - Update types in `frontend/lib/types.ts`
 

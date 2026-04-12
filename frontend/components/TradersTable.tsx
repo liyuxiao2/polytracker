@@ -3,7 +3,13 @@
 import { useState } from 'react';
 import { ArrowUpDown, ExternalLink } from 'lucide-react';
 import { TraderListItem } from '@/lib/types';
-import { formatCurrency, shortenAddress, getScoreColor, getScoreBgColor, formatRelativeTime } from '@/lib/utils';
+import {
+  formatCurrency,
+  shortenAddress,
+  getScoreColor,
+  getScoreBgColor,
+  formatRelativeTime,
+} from '@/lib/utils';
 import { cn } from '@/lib/utils';
 
 interface TradersTableProps {
@@ -11,7 +17,13 @@ interface TradersTableProps {
   onTraderClick: (address: string) => void;
 }
 
-type SortField = 'insider_score' | 'total_trades' | 'avg_bet_size' | 'flagged_trades_count' | 'win_rate' | 'total_pnl';
+type SortField =
+  | 'insider_score'
+  | 'total_trades'
+  | 'avg_bet_size'
+  | 'flagged_trades_count'
+  | 'win_rate'
+  | 'total_pnl';
 type SortDirection = 'asc' | 'desc';
 
 export default function TradersTable({ traders, onTraderClick }: TradersTableProps) {
@@ -111,10 +123,12 @@ export default function TradersTable({ traders, onTraderClick }: TradersTablePro
                 onClick={() => onTraderClick(trader.wallet_address)}
               >
                 <td className="px-6 py-4">
-                  <div className={cn(
-                    'inline-flex items-center px-3 py-1 rounded-full border text-sm font-bold',
-                    getScoreBgColor(trader.insider_score)
-                  )}>
+                  <div
+                    className={cn(
+                      'inline-flex items-center px-3 py-1 rounded-full border text-sm font-bold',
+                      getScoreBgColor(trader.insider_score),
+                    )}
+                  >
                     <span className={getScoreColor(trader.insider_score)}>
                       {trader.insider_score.toFixed(1)}
                     </span>
@@ -125,9 +139,7 @@ export default function TradersTable({ traders, onTraderClick }: TradersTablePro
                     {shortenAddress(trader.wallet_address)}
                   </code>
                 </td>
-                <td className="px-6 py-4 text-sm text-slate-300">
-                  {trader.total_trades}
-                </td>
+                <td className="px-6 py-4 text-sm text-slate-300">{trader.total_trades}</td>
                 <td className="px-6 py-4 text-sm font-semibold text-white">
                   {formatCurrency(trader.avg_bet_size)}
                 </td>
@@ -137,20 +149,28 @@ export default function TradersTable({ traders, onTraderClick }: TradersTablePro
                   </span>
                 </td>
                 <td className="px-6 py-4">
-                  <span className={cn(
-                    "text-sm font-medium",
-                    trader.win_rate >= 60 ? "text-emerald-400" :
-                    trader.win_rate >= 40 ? "text-slate-300" : "text-red-400"
-                  )}>
+                  <span
+                    className={cn(
+                      'text-sm font-medium',
+                      trader.win_rate >= 60
+                        ? 'text-emerald-400'
+                        : trader.win_rate >= 40
+                          ? 'text-slate-300'
+                          : 'text-red-400',
+                    )}
+                  >
                     {trader.win_rate.toFixed(1)}%
                   </span>
                 </td>
                 <td className="px-6 py-4">
-                  <span className={cn(
-                    "text-sm font-semibold",
-                    trader.total_pnl >= 0 ? "text-emerald-400" : "text-red-400"
-                  )}>
-                    {trader.total_pnl >= 0 ? '+' : ''}{formatCurrency(trader.total_pnl)}
+                  <span
+                    className={cn(
+                      'text-sm font-semibold',
+                      trader.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400',
+                    )}
+                  >
+                    {trader.total_pnl >= 0 ? '+' : ''}
+                    {formatCurrency(trader.total_pnl)}
                   </span>
                 </td>
                 <td className="px-6 py-4 text-sm text-slate-400">

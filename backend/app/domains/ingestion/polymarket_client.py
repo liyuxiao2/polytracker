@@ -1,8 +1,8 @@
-import httpx
 import logging
 import os
-from typing import List, Optional
 from difflib import SequenceMatcher
+
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -14,49 +14,46 @@ class PolymarketClient:
         self.clob_api_base = os.getenv("POLYMARKET_CLOB_API", "https://clob.polymarket.com")
         self.client = httpx.AsyncClient(timeout=10.0)
 
-    async def get_recent_trades(self, limit: int = 1000) -> List[dict]:
+    async def get_recent_trades(self, limit: int = 1000) -> list[dict]:
         """
         Fetch recent trades from Polymarket Data API (public, no auth required).
         """
         try:
-            response = await self.client.get(
-                f"{self.data_api_base}/trades",
-                params={"limit": limit}
-            )
+            response = await self.client.get(f"{self.data_api_base}/trades", params={"limit": limit})
             response.raise_for_status()
             trades = response.json()
 
             # Transform to consistent format
             result = []
             for t in trades:
-                result.append({
-                    "id": t.get("transactionHash", ""),
-                    "market": t.get("conditionId", ""),
-                    "market_name": t.get("title", "Unknown"),
-                    "asset_id": t.get("asset", ""),
-                    "maker_address": t.get("proxyWallet", ""),
-                    "price": float(t.get("price", 0)),
-                    "side": t.get("side", ""),
-                    "size": float(t.get("size", 0)),
-                    "timestamp": int(t.get("timestamp", 0)) * 1000,  # Convert to ms
-                    "outcome": t.get("outcome", ""),
-                    "event_slug": t.get("eventSlug", ""),
-                })
+                result.append(
+                    {
+                        "id": t.get("transactionHash", ""),
+                        "market": t.get("conditionId", ""),
+                        "market_name": t.get("title", "Unknown"),
+                        "asset_id": t.get("asset", ""),
+                        "maker_address": t.get("proxyWallet", ""),
+                        "price": float(t.get("price", 0)),
+                        "side": t.get("side", ""),
+                        "size": float(t.get("size", 0)),
+                        "timestamp": int(t.get("timestamp", 0)) * 1000,  # Convert to ms
+                        "outcome": t.get("outcome", ""),
+                        "event_slug": t.get("eventSlug", ""),
+                    }
+                )
             return result
         except Exception as e:
             logger.error(f"Error fetching trades: {e}")
             return []
 
-    async def get_market_info(self, market_id: str) -> Optional[dict]:
+    async def get_market_info(self, market_id: str) -> dict | None:
         """
         Fetch market info including resolution status from Polymarket CLOB API.
         market_id should be the conditionId.
         """
         try:
             # Use CLOB API which has more complete market data including short-term markets
-            response = await self.client.get(
-                f"{self.clob_api_base}/markets/{market_id}"
-            )
+            response = await self.client.get(f"{self.clob_api_base}/markets/{market_id}")
             response.raise_for_status()
             data = response.json()
 
@@ -91,14 +88,13 @@ class PolymarketClient:
             logger.error(f"Error fetching market info for {market_id}: {e}")
             return None
 
-    async def _get_market_info_gamma(self, market_id: str) -> Optional[dict]:
+    async def _get_market_info_gamma(self, market_id: str) -> dict | None:
         """
         Fallback method to fetch market info from Gamma API for older markets.
         """
         try:
             response = await self.client.get(
-                f"{self.gamma_api_base}/markets",
-                params={"condition_id": market_id, "limit": 1}
+                f"{self.gamma_api_base}/markets", params={"condition_id": market_id, "limit": 1}
             )
             response.raise_for_status()
             markets = response.json()
@@ -119,7 +115,7 @@ class PolymarketClient:
             logger.error(f"Error fetching market info from Gamma API for {market_id}: {e}")
             return None
 
-    async def get_markets_list(self, limit: int = 100, offset: int = 0, closed: bool = False) -> List[dict]:
+    async def get_markets_list(self, limit: int = 100, offset: int = 0, closed: bool = False) -> list[dict]:
         """
         Fetch a list of markets from Gamma API.
         Args:
@@ -134,10 +130,7 @@ class PolymarketClient:
             else:
                 params["closed"] = "false"
 
-            response = await self.client.get(
-                f"{self.gamma_api_base}/markets",
-                params=params
-            )
+            response = await self.client.get(f"{self.gamma_api_base}/markets", params=params)
             response.raise_for_status()
             return response.json()
         except Exception as e:
@@ -179,10 +172,7 @@ class PolymarketClient:
                     # Filter by query (client-side)
                     if query:
                         query_lower = query.lower()
-                        page_matches = [
-                            m for m in all_markets
-                            if query_lower in m.get("question", "").lower()
-                        ]
+                        page_matches = [m for m in all_markets if query_lower in m.get("question", "").lower()]
                         matches.extend(page_matches)
                     else:
                         matches.extend(all_markets)
@@ -197,11 +187,7 @@ class PolymarketClient:
             logger.error(f"Error searching markets: {e}")
             return []
 
-    async def find_market_by_keywords(
-        self,
-        keywords: List[str],
-        allow_closed: bool = True
-    ) -> Optional[dict]:
+    async def find_market_by_keywords(self, keywords: list[str], allow_closed: bool = True) -> dict | None:
         """
         Find a specific market by searching for multiple keyword variations.
         Returns best match using fuzzy matching.
@@ -217,12 +203,7 @@ class PolymarketClient:
         best_score = 0.0
 
         # Fetch a comprehensive list of markets once
-        all_markets = await self.search_markets(
-            query="",
-            limit=500,
-            max_pages=5,
-            allow_closed=allow_closed
-        )
+        all_markets = await self.search_markets(query="", limit=500, max_pages=5, allow_closed=allow_closed)
 
         for keyword in keywords:
             keyword_lower = keyword.lower()
@@ -234,32 +215,24 @@ class PolymarketClient:
                     continue
 
                 # Calculate similarity score using difflib
-                similarity = SequenceMatcher(
-                    None,
-                    keyword_lower,
-                    question.lower()
-                ).ratio()
+                similarity = SequenceMatcher(None, keyword_lower, question.lower()).ratio()
 
                 if similarity > best_score:
                     best_score = similarity
                     best_match = market
 
         if best_match:
-            logger.info(
-                f"Best match (score {best_score:.2f}): "
-                f"{best_match.get('question')}"
-            )
+            logger.info(f"Best match (score {best_score:.2f}): {best_match.get('question')}")
 
         return best_match
 
-    async def get_resolved_markets(self, limit: int = 100, offset: int = 0) -> List[dict]:
+    async def get_resolved_markets(self, limit: int = 100, offset: int = 0) -> list[dict]:
         """
         Fetch resolved/closed markets from Gamma API.
         """
         try:
             response = await self.client.get(
-                f"{self.gamma_api_base}/markets",
-                params={"closed": "true", "limit": limit, "offset": offset}
+                f"{self.gamma_api_base}/markets", params={"closed": "true", "limit": limit, "offset": offset}
             )
             response.raise_for_status()
             return response.json()
@@ -267,14 +240,13 @@ class PolymarketClient:
             logger.error(f"Error fetching resolved markets: {e}")
             return []
 
-    async def get_user_activity(self, wallet_address: str, limit: int = 100) -> List[dict]:
+    async def get_user_activity(self, wallet_address: str, limit: int = 100) -> list[dict]:
         """
         Fetch user's trade activity from Polymarket Data API.
         """
         try:
             response = await self.client.get(
-                f"{self.data_api_base}/activity",
-                params={"user": wallet_address, "limit": limit}
+                f"{self.data_api_base}/activity", params={"user": wallet_address, "limit": limit}
             )
             response.raise_for_status()
             return response.json()
@@ -282,7 +254,7 @@ class PolymarketClient:
             logger.error(f"Error fetching user activity: {e}")
             return []
 
-    async def get_historical_trades(self, before_timestamp: int = None, limit: int = 500) -> List[dict]:
+    async def get_historical_trades(self, before_timestamp: int = None, limit: int = 500) -> list[dict]:
         """
         Fetch historical trades. Use cursor/before_timestamp for pagination.
         """
@@ -291,42 +263,36 @@ class PolymarketClient:
             if before_timestamp:
                 params["before"] = before_timestamp
 
-            response = await self.client.get(
-                f"{self.data_api_base}/trades",
-                params=params
-            )
+            response = await self.client.get(f"{self.data_api_base}/trades", params=params)
             response.raise_for_status()
             trades = response.json()
 
             # Transform to consistent format
             result = []
             for t in trades:
-                result.append({
-                    "id": t.get("transactionHash", ""),
-                    "market": t.get("conditionId", ""),
-                    "market_name": t.get("title", "Unknown"),
-                    "asset_id": t.get("asset", ""),
-                    "maker_address": t.get("proxyWallet", ""),
-                    "price": float(t.get("price", 0)),
-                    "side": t.get("side", ""),
-                    "size": float(t.get("size", 0)),
-                    "timestamp": int(t.get("timestamp", 0)) * 1000,
-                    "outcome": t.get("outcome", ""),
-                    "event_slug": t.get("eventSlug", ""),
-                })
+                result.append(
+                    {
+                        "id": t.get("transactionHash", ""),
+                        "market": t.get("conditionId", ""),
+                        "market_name": t.get("title", "Unknown"),
+                        "asset_id": t.get("asset", ""),
+                        "maker_address": t.get("proxyWallet", ""),
+                        "price": float(t.get("price", 0)),
+                        "side": t.get("side", ""),
+                        "size": float(t.get("size", 0)),
+                        "timestamp": int(t.get("timestamp", 0)) * 1000,
+                        "outcome": t.get("outcome", ""),
+                        "event_slug": t.get("eventSlug", ""),
+                    }
+                )
             return result
         except Exception as e:
             logger.error(f"Error fetching historical trades: {e}")
             return []
 
     async def get_price_history(
-        self,
-        token_id: str,
-        interval: str = "1d",
-        fidelity: int = 60,
-        start_ts: int = None,
-        end_ts: int = None
-    ) -> List[dict]:
+        self, token_id: str, interval: str = "1d", fidelity: int = 60, start_ts: int = None, end_ts: int = None
+    ) -> list[dict]:
         """
         Fetch historical price data for a token from CLOB API.
 
@@ -352,10 +318,7 @@ class PolymarketClient:
             if fidelity:
                 params["fidelity"] = fidelity
 
-            response = await self.client.get(
-                f"{self.clob_api_base}/prices-history",
-                params=params
-            )
+            response = await self.client.get(f"{self.clob_api_base}/prices-history", params=params)
             response.raise_for_status()
             data = response.json()
 
@@ -365,7 +328,7 @@ class PolymarketClient:
             logger.error(f"Error fetching price history for {token_id}: {e}")
             return []
 
-    async def get_order_book(self, token_id: str) -> Optional[dict]:
+    async def get_order_book(self, token_id: str) -> dict | None:
         """
         Fetch the full order book for a token from CLOB API.
 
@@ -376,10 +339,7 @@ class PolymarketClient:
             Dict with 'bids' and 'asks' arrays, each containing {price, size} entries
         """
         try:
-            response = await self.client.get(
-                f"{self.clob_api_base}/book",
-                params={"token_id": token_id}
-            )
+            response = await self.client.get(f"{self.clob_api_base}/book", params={"token_id": token_id})
             response.raise_for_status()
             data = response.json()
 
@@ -388,16 +348,10 @@ class PolymarketClient:
             asks = []
 
             for bid in data.get("bids", []):
-                bids.append({
-                    "price": float(bid.get("price", 0)),
-                    "size": float(bid.get("size", 0))
-                })
+                bids.append({"price": float(bid.get("price", 0)), "size": float(bid.get("size", 0))})
 
             for ask in data.get("asks", []):
-                asks.append({
-                    "price": float(ask.get("price", 0)),
-                    "size": float(ask.get("size", 0))
-                })
+                asks.append({"price": float(ask.get("price", 0)), "size": float(ask.get("size", 0))})
 
             # Sort: bids descending by price, asks ascending by price
             bids.sort(key=lambda x: x["price"], reverse=True)
@@ -421,21 +375,18 @@ class PolymarketClient:
                 "spread": spread,
                 "bid_liquidity": bid_liquidity,
                 "ask_liquidity": ask_liquidity,
-                "mid_price": (best_bid + best_ask) / 2 if bids and asks else None
+                "mid_price": (best_bid + best_ask) / 2 if bids and asks else None,
             }
         except Exception as e:
             logger.error(f"Error fetching order book for {token_id}: {e}")
             return None
 
-    async def get_midpoint(self, token_id: str) -> Optional[float]:
+    async def get_midpoint(self, token_id: str) -> float | None:
         """
         Fetch the midpoint price for a token.
         """
         try:
-            response = await self.client.get(
-                f"{self.clob_api_base}/midpoint",
-                params={"token_id": token_id}
-            )
+            response = await self.client.get(f"{self.clob_api_base}/midpoint", params={"token_id": token_id})
             response.raise_for_status()
             data = response.json()
             return float(data.get("mid", 0))
@@ -443,27 +394,19 @@ class PolymarketClient:
             logger.error(f"Error fetching midpoint for {token_id}: {e}")
             return None
 
-    async def get_spread(self, token_id: str) -> Optional[dict]:
+    async def get_spread(self, token_id: str) -> dict | None:
         """
         Fetch current spread data (best bid/ask) for a token.
         """
         try:
-            response = await self.client.get(
-                f"{self.clob_api_base}/spread",
-                params={"token_id": token_id}
-            )
+            response = await self.client.get(f"{self.clob_api_base}/spread", params={"token_id": token_id})
             response.raise_for_status()
             data = response.json()
 
             bid = float(data.get("bid", 0))
             ask = float(data.get("ask", 0))
 
-            return {
-                "token_id": token_id,
-                "bid": bid,
-                "ask": ask,
-                "spread": ask - bid if bid and ask else None
-            }
+            return {"token_id": token_id, "bid": bid, "ask": ask, "spread": ask - bid if bid and ask else None}
         except Exception as e:
             logger.error(f"Error fetching spread for {token_id}: {e}")
             return None
@@ -478,10 +421,7 @@ class PolymarketClient:
             if next_cursor:
                 params["next_cursor"] = next_cursor
 
-            response = await self.client.get(
-                f"{self.clob_api_base}/markets",
-                params=params
-            )
+            response = await self.client.get(f"{self.clob_api_base}/markets", params=params)
             response.raise_for_status()
             data = response.json()
 
@@ -497,22 +437,21 @@ class PolymarketClient:
                     elif token.get("outcome", "").upper() == "NO":
                         no_token = token.get("token_id")
 
-                markets.append({
-                    "condition_id": m.get("condition_id"),
-                    "question": m.get("question", ""),
-                    "market_slug": m.get("market_slug", ""),
-                    "yes_token_id": yes_token,
-                    "no_token_id": no_token,
-                    "active": m.get("active", False),
-                    "closed": m.get("closed", False),
-                    "volume": float(m.get("volume", 0) or 0),
-                    "liquidity": float(m.get("liquidity", 0) or 0),
-                })
+                markets.append(
+                    {
+                        "condition_id": m.get("condition_id"),
+                        "question": m.get("question", ""),
+                        "market_slug": m.get("market_slug", ""),
+                        "yes_token_id": yes_token,
+                        "no_token_id": no_token,
+                        "active": m.get("active", False),
+                        "closed": m.get("closed", False),
+                        "volume": float(m.get("volume", 0) or 0),
+                        "liquidity": float(m.get("liquidity", 0) or 0),
+                    }
+                )
 
-            return {
-                "markets": markets,
-                "next_cursor": data.get("next_cursor") if isinstance(data, dict) else None
-            }
+            return {"markets": markets, "next_cursor": data.get("next_cursor") if isinstance(data, dict) else None}
         except Exception as e:
             logger.error(f"Error fetching CLOB markets: {e}")
             return {"markets": [], "next_cursor": None}

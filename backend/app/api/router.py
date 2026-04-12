@@ -1,7 +1,8 @@
 from fastapi import APIRouter
-from app.domains.traders import router as traders
+
 from app.domains.markets import router as markets
 from app.domains.system import router as system
+from app.domains.traders import router as traders
 
 api_router = APIRouter()
 
