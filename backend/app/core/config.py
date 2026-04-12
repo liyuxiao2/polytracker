@@ -36,8 +36,27 @@ class Settings(BaseSettings):
     # Detection thresholds
     z_score_threshold: float = 3.0
 
+    # Tracked markets (comma-separated condition_ids)
+    tracked_market_ids: str = ""
+
+    # Backfill settings
+    backfill_max_pages: int = 10000
+    backfill_stop_on_duplicates: bool = False
+    backfill_rate_limit_delay: float = 0.1
+    backfill_parallel_markets: bool = True
+
     # CORS
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:3001"]
+
+    @property
+    def tracked_market_id_list(self) -> list[str]:
+        """
+        Parse tracked market IDs into list.
+        Returns empty list if not configured.
+        """
+        if not self.tracked_market_ids:
+            return []
+        return [mid.strip() for mid in self.tracked_market_ids.split(",") if mid.strip()]
 
     class Config:
         env_file = ".env"

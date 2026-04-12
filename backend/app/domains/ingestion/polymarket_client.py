@@ -148,6 +148,9 @@ class PolymarketClient:
         self,
         query: str = "",
         limit: int = 500,
+        self, 
+        query: str = "", 
+        limit: int = 500, 
         max_pages: int = 5,
         allow_closed: bool = False
     ) -> List[dict]:
@@ -163,6 +166,7 @@ class PolymarketClient:
                 for i in range(max_pages):
                     params = {
                         "limit": limit,
+                        "limit": limit, 
                         "offset": i * limit,
                         "closed": "true" if closed_status else "false"
                     }
@@ -173,6 +177,7 @@ class PolymarketClient:
                     response.raise_for_status()
                     all_markets = response.json()
 
+                    
                     if not all_markets:
                         break
 
