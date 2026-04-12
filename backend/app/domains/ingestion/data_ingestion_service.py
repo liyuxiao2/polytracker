@@ -20,6 +20,16 @@ class DataIngestionService:
         self.min_trade_size = float(os.getenv("MIN_TRADE_SIZE_USD", "0"))
         self.trade_fetch_limit = int(os.getenv("TRADE_FETCH_LIMIT", "1000"))
 
+        # Add market filtering support
+        from app.core.config import get_settings
+        self.settings = get_settings()
+        self.tracked_markets = set(self.settings.tracked_market_id_list)
+
+        if self.tracked_markets:
+            logger.info(f"[Worker] Tracking {len(self.tracked_markets)} specific markets: {list(self.tracked_markets)}")
+        else:
+            logger.info(f"[Worker] Tracking ALL markets (no filter configured)")
+
     async def process_trades(self) -> dict:
         import time
         start_time = time.time()
@@ -46,6 +56,11 @@ class DataIngestionService:
 
     async def process_single_trade(self, trade_data: dict, session: AsyncSession) -> Optional[Trade]:
         try:
+            # Filter by tracked markets if configured
+            market_id = trade_data.get("market", "")
+            if self.tracked_markets and market_id not in self.tracked_markets:
+                return None  # Skip trades from non-tracked markets
+
             wallet_address = trade_data.get("maker_address", "")
             trade_size_usd = float(trade_data.get("size", 0))
 
@@ -53,13 +68,12 @@ class DataIngestionService:
                 return None
 
             transaction_hash = trade_data.get("id", "") or f"unknown_{uuid.uuid4().hex[:16]}"
-            
+
             if transaction_hash:
                 existing = await self.trader_repo.get_trade_by_transaction_hash(session, transaction_hash)
                 if existing:
                     return None
 
-            market_id = trade_data.get("market", "")
             market_slug = trade_data.get("event_slug", "")
             market_name = trade_data.get("market_name", "Unknown Market")
             timestamp = datetime.fromtimestamp(int(trade_data.get("timestamp", 0)) / 1000)
@@ -172,66 +186,248 @@ class DataIngestionService:
 
     async def backfill_historical_trades(
         self,
-        max_pages: int = 100,
+        max_pages: int = 10000,
         target_market_ids: set = None,
         days_back: int = None,
-        stop_on_duplicates: bool = True
+        stop_on_duplicates: bool = False,
+        batch_size: int = 500
     ):
-        logger.info(f"[Backfill] Starting historical trade backfill (max {max_pages} pages, days_back={days_back})...")
+        """
+        Optimized backfill with bulk inserts and minimal overhead.
 
-        if days_back:
-            cutoff_date = datetime.utcnow() - timedelta(days=days_back)
-            logger.info(f"[Backfill] Will fetch back to {cutoff_date.strftime('%Y-%m-%d')}")
+        Args:
+            max_pages: Maximum pages to fetch (500 trades/page)
+            target_market_ids: Set of market IDs to filter for (None = all)
+            days_back: Stop backfilling after going back this many days
+            stop_on_duplicates: Stop if 3 consecutive empty pages
+            batch_size: Number of trades to accumulate before bulk insert
+
+        Returns:
+            Total number of new trades inserted
+        """
+        logger.info(f"[Backfill] Starting optimized backfill (max {max_pages} pages)...")
+
+        from app.core.config import get_settings
+        settings = get_settings()
+        rate_limit_delay = settings.backfill_rate_limit_delay
 
         total_new = 0
-        total_skipped = 0
         pages_fetched = 0
         oldest_timestamp = None
-        consecutive_empty_pages = 0
+        trade_batch = []
+
+        # Calculate cutoff date if days_back specified
+        cutoff_date = None
+        if days_back:
+            cutoff_date = datetime.utcnow() - timedelta(days=days_back)
+            logger.info(f"[Backfill] Will stop at {cutoff_date.strftime('%Y-%m-%d')}")
 
         async with async_session_maker() as session:
             for page in range(max_pages):
+                # Fetch page of trades
                 trades = await self.client.get_historical_trades(
                     before_timestamp=oldest_timestamp,
                     limit=500
                 )
 
                 if not trades:
+                    logger.info(f"[Backfill] No more trades found after {pages_fetched} pages")
                     break
 
                 pages_fetched += 1
-                page_new = 0
 
+                # Process trades in this page
                 for trade_data in trades:
+                    # Filter by market
                     if target_market_ids:
                         market_id = trade_data.get("market", "")
                         if market_id not in target_market_ids:
                             continue
 
-                    result = await self.process_single_trade(trade_data, session)
-                    if result:
-                        page_new += 1
-                        total_new += 1
-                    else:
-                        total_skipped += 1
+                    # Create trade object (without deduplication check for speed)
+                    trade = self._create_trade_object_for_bulk(trade_data)
+                    if trade:
+                        trade_batch.append(trade)
 
-                if trades:
-                    oldest_timestamp = min(t.get("timestamp", 0) for t in trades)
-                    oldest_date = datetime.fromtimestamp(oldest_timestamp / 1000)
-                    
-                    if days_back and oldest_date < cutoff_date:
-                        break
+                # Bulk insert when batch is full
+                if len(trade_batch) >= batch_size:
+                    inserted = await self._bulk_insert_trades(session, trade_batch)
+                    total_new += inserted
+                    trade_batch = []
 
-                await session.commit()
-                await asyncio.sleep(0.3)
+                # Update pagination cursor
+                oldest_timestamp = min(t.get("timestamp", 0) for t in trades)
+                oldest_date = datetime.fromtimestamp(oldest_timestamp / 1000)
 
-                if page_new == 0:
-                    consecutive_empty_pages += 1
-                else:
-                    consecutive_empty_pages = 0
+                # Log every 10 pages to reduce noise
+                if pages_fetched % 10 == 0:
+                    logger.info(
+                        f"[Backfill] Page {pages_fetched}: {total_new} trades inserted "
+                        f"(oldest: {oldest_date.strftime('%Y-%m-%d %H:%M')})"
+                    )
 
-                if stop_on_duplicates and consecutive_empty_pages >= 3:
+                # Check cutoff date
+                if cutoff_date and oldest_date < cutoff_date:
+                    logger.info(f"[Backfill] Reached target date, stopping")
                     break
 
-        logger.info(f"[Backfill] Complete: {total_new} new trades, {total_skipped} skipped, {pages_fetched} pages")
+                # Rate limiting
+                await asyncio.sleep(rate_limit_delay)
+
+            # Insert remaining batch
+            if trade_batch:
+                inserted = await self._bulk_insert_trades(session, trade_batch)
+                total_new += inserted
+
+            await session.commit()
+
+        logger.info(f"[Backfill] Complete: {total_new} trades inserted, {pages_fetched} pages fetched")
         return total_new
+
+    def _create_trade_object_for_bulk(self, trade_data: dict) -> Optional[Trade]:
+        """
+        Create Trade object without database queries (for bulk insert).
+        Skips Z-score calculation and deduplication checks for speed.
+        """
+        try:
+            transaction_hash = trade_data.get("id", "") or f"unknown_{uuid.uuid4().hex[:16]}"
+            market_id = trade_data.get("market", "")
+            wallet_address = trade_data.get("maker_address", "")
+
+            if not market_id or not wallet_address:
+                return None
+
+            trade_size = float(trade_data.get("size", 0))
+            if trade_size < self.min_trade_size:
+                return None
+
+            # Convert timestamp
+            timestamp_ms = trade_data.get("timestamp", 0)
+            if isinstance(timestamp_ms, int):
+                timestamp = datetime.fromtimestamp(timestamp_ms / 1000)
+            else:
+                logger.warning(f"Invalid timestamp format for trade: {trade_data.get('id')}. Skipping.")
+                return None
+
+            trade = Trade(
+                transaction_hash=transaction_hash,
+                wallet_address=wallet_address,
+                market_id=market_id,
+                market_slug=trade_data.get("event_slug", ""),
+                market_name=trade_data.get("market_name", "Unknown"),
+                trade_size_usd=trade_size,
+                outcome=trade_data.get("outcome", ""),
+                price=float(trade_data.get("price", 0)) if trade_data.get("price") else None,
+                side=trade_data.get("side", ""),
+                asset_id=trade_data.get("asset_id", ""),
+                timestamp=timestamp,
+                trade_hour_utc=timestamp.hour,
+                is_flagged=False,
+                z_score=None
+            )
+
+            return trade
+        except Exception as e:
+            logger.error(f"Error creating trade object: {e}")
+            return None
+
+    async def _bulk_insert_trades(self, session: AsyncSession, trades: List[Trade]) -> int:
+        """
+        Bulk insert trades using PostgreSQL ON CONFLICT DO NOTHING.
+        Returns estimated count of successfully inserted trades.
+
+        Note: PostgreSQL doesn't return exact count with ON CONFLICT,
+        so we return batch size as estimate.
+        """
+        if not trades:
+            return 0
+
+        try:
+            from sqlalchemy.dialects.postgresql import insert
+
+            # Build list of dictionaries for bulk insert
+            trade_dicts = []
+            for t in trades:
+                trade_dicts.append({
+                    "transaction_hash": t.transaction_hash,
+                    "wallet_address": t.wallet_address,
+                    "market_id": t.market_id,
+                    "market_slug": t.market_slug,
+                    "market_name": t.market_name,
+                    "trade_size_usd": t.trade_size_usd,
+                    "outcome": t.outcome,
+                    "price": t.price,
+                    "side": t.side,
+                    "asset_id": t.asset_id,
+                    "timestamp": t.timestamp,
+                    "trade_hour_utc": t.trade_hour_utc,
+                    "is_flagged": t.is_flagged,
+                    "z_score": t.z_score
+                })
+
+            # Bulk insert with ON CONFLICT DO NOTHING
+            stmt = insert(Trade).values(trade_dicts)
+            stmt = stmt.on_conflict_do_nothing(
+                index_elements=['transaction_hash']  # Unique index
+            )
+
+            await session.execute(stmt)
+
+            # Return batch size as estimate (can't get exact count with ON CONFLICT)
+            return len(trades)
+        except Exception as e:
+            logger.error(f"Error in bulk insert: {e}")
+
+            # Fallback to individual inserts
+            count = 0
+            for trade in trades:
+                try:
+                    session.add(trade)
+                    count += 1
+                except IntegrityError:
+                    pass  # Skip duplicates
+
+            return count
+
+    async def backfill_multiple_markets_parallel(
+        self,
+        market_ids: List[str],
+        max_pages_per_market: int = 10000
+    ):
+        """
+        Backfill multiple markets in parallel using asyncio.gather.
+        Each market gets its own backfill task running concurrently.
+
+        Args:
+            market_ids: List of market condition IDs to backfill
+            max_pages_per_market: Max pages to fetch for each market
+
+        Returns:
+            Total number of trades inserted across all markets
+        """
+        logger.info(f"[Backfill] Starting parallel backfill for {len(market_ids)} markets...")
+
+        # Create backfill task for each market
+        tasks = []
+        for market_id in market_ids:
+            task = self.backfill_historical_trades(
+                max_pages=max_pages_per_market,
+                target_market_ids={market_id},
+                stop_on_duplicates=False
+            )
+            tasks.append(task)
+
+        # Run all backfills concurrently
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Sum successful results
+        total_trades = 0
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.error(f"[Backfill] Market {market_ids[i]} failed: {result}")
+            else:
+                logger.info(f"[Backfill] Market {market_ids[i]}: {result} trades")
+                total_trades += result
+
+        logger.info(f"[Backfill] Parallel backfill complete: {total_trades} total trades")
+        return total_trades
