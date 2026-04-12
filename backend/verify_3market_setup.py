@@ -18,10 +18,6 @@ import asyncio
 from app.core.database import async_session_maker, Trade, Market, TraderProfile
 from sqlalchemy import select, func, distinct
 from app.core.config import get_settings
-import logging
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 async def verify_setup():
     """Verify 3-market system is correctly configured"""
@@ -121,6 +117,7 @@ async def verify_setup():
             )
             sample_profiles = sample.scalars().all()
 
+            sample_profiles_ok = True
             print(f"  Sample profiles (checking trade consistency):")
             for profile in sample_profiles:
                 # Check if this wallet has any trades from non-tracked markets
@@ -135,10 +132,12 @@ async def verify_setup():
                 if non_tracked_for_wallet:
                     print(f"    ❌ Wallet {profile.wallet_address[:10]}... has trades from non-tracked markets")
                     all_checks_passed = False
+                    sample_profiles_ok = False
                 else:
                     print(f"    ✅ Wallet {profile.wallet_address[:10]}... only has tracked market trades")
 
-            print(f"  ✅ PASS: Trader profiles verified")
+            if sample_profiles_ok:
+                print(f"  ✅ PASS: Trader profiles verified")
         else:
             print(f"  ⚠️  No profiles yet (will be created as trades are analyzed)")
 
@@ -148,11 +147,10 @@ async def verify_setup():
         print(f"\n[5/5] Historical Data Range")
 
         if total_count > 0:
-            oldest = await session.execute(select(func.min(Trade.timestamp)))
-            newest = await session.execute(select(func.max(Trade.timestamp)))
-
-            oldest_date = oldest.scalar()
-            newest_date = newest.scalar()
+            min_max_result = await session.execute(
+                select(func.min(Trade.timestamp), func.max(Trade.timestamp))
+            )
+            oldest_date, newest_date = min_max_result.one()
 
             if oldest_date and newest_date:
                 print(f"  Oldest trade: {oldest_date.strftime('%Y-%m-%d %H:%M:%S UTC')}")

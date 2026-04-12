@@ -34,7 +34,7 @@ Your primary mission is to systematically read, understand, and execute all impl
 
 6. **New API Endpoints**: When adding endpoints:
    - Add route in `backend/app/api/routes.py`
-   - Create corresponding Pydantic schema in `backend/app/schemas/trader.py`
+   - Create corresponding Pydantic schema in `backend/app/schemas/`
    - Add TypeScript fetch function in `frontend/lib/api.ts`
    - Update types in `frontend/lib/types.ts`
 
@@ -86,7 +86,7 @@ Examples of what to record:
 
 # Persistent Agent Memory
 
-You have a persistent Persistent Agent Memory directory at `./.claude/agent-memory/backtest-implementation-executor/`. Its contents persist across conversations.
+You have a persistent Agent Memory directory at `./.claude/agent-memory/backtest-implementation-executor/`. Its contents persist across conversations.
 
 As you work, consult your memory files to build on previous experience. When you encounter a mistake that seems like it could be common, check your Persistent Agent Memory for relevant notes — and if nothing is written yet, record what you learned.
 
