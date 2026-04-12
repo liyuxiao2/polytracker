@@ -18,6 +18,7 @@ ignore = [
     "B008",   # do not perform function calls in argument defaults (FastAPI Depends)
     "SIM102", # nested if statements (sometimes clearer than combined conditions)
     "SIM105", # contextlib.suppress (try/except/pass is often clearer)
+    "SIM108", # ternary operator (if/else blocks are often clearer)
 ]
 
 [lint.isort]
