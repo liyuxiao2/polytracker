@@ -21,7 +21,15 @@
       "Bash(git commit:*)",
       "Bash(/Users/liyu.xiao/Documents/GitHub/polytracker/backend/venv/bin/python -m pytest:*)",
       "Bash(/Users/liyu.xiao/Documents/GitHub/polytracker/backend/.venv/bin/python -m pytest:*)",
-      "Bash(pip3 install:*)"
+      "Bash(pip3 install:*)",
+      "Bash(git checkout:*)",
+      "Bash(git cherry-pick:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr view:*)",
+      "Bash(git fetch:*)",
+      "Bash(git rebase:*)"
     ]
   }
 }
