@@ -2,6 +2,7 @@ import httpx
 import logging
 import os
 from typing import List, Optional
+from difflib import SequenceMatcher
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +143,114 @@ class PolymarketClient:
         except Exception as e:
             logger.error(f"Error fetching markets list: {e}")
             return []
+
+    async def search_markets(
+        self,
+        query: str = "",
+        limit: int = 500,
+        max_pages: int = 5,
+        allow_closed: bool = False
+    ) -> List[dict]:
+        """
+        Search markets by question text using Gamma API.
+        Note: Polymarket doesn't have a search endpoint, so we fetch
+        all markets and filter client-side.
+        """
+        matches = []
+        statuses = [False, True] if allow_closed else [False]
+        try:
+            for closed_status in statuses:
+                for i in range(max_pages):
+                    params = {
+                        "limit": limit,
+                        "offset": i * limit,
+                        "closed": "true" if closed_status else "false"
+                    }
+                    response = await self.client.get(
+                        f"{self.gamma_api_base}/markets",
+                        params=params
+                    )
+                    response.raise_for_status()
+                    all_markets = response.json()
+
+                    if not all_markets:
+                        break
+
+                    # Filter by query (client-side)
+                    if query:
+                        query_lower = query.lower()
+                        page_matches = [
+                            m for m in all_markets
+                            if query_lower in m.get("question", "").lower()
+                        ]
+                        matches.extend(page_matches)
+                    else:
+                        matches.extend(all_markets)
+
+            if query:
+                logger.info(f"Found {len(matches)} markets matching '{query}'")
+            return matches
+        except httpx.RequestError as e:
+            logger.error(f"Error searching markets: {e}")
+            return matches
+        except Exception as e:
+            logger.error(f"Error searching markets: {e}")
+            return []
+
+    async def find_market_by_keywords(
+        self,
+        keywords: List[str],
+        allow_closed: bool = True
+    ) -> Optional[dict]:
+        """
+        Find a specific market by searching for multiple keyword variations.
+        Returns best match using fuzzy matching.
+
+        Args:
+            keywords: List of search terms (e.g., ["Trump 2024", "Trump election"])
+            allow_closed: If False, skip resolved markets
+
+        Returns:
+            Best matching market with highest similarity score
+        """
+        best_match = None
+        best_score = 0.0
+
+        # Fetch a comprehensive list of markets once
+        all_markets = await self.search_markets(
+            query="",
+            limit=500,
+            max_pages=5,
+            allow_closed=allow_closed
+        )
+
+        for keyword in keywords:
+            keyword_lower = keyword.lower()
+            for market in all_markets:
+                question = market.get("question", "")
+
+                # Skip closed markets if not allowed
+                if not allow_closed and market.get("closed", False):
+                    continue
+
+                # Calculate similarity score using difflib
+                similarity = SequenceMatcher(
+                    None,
+                    keyword_lower,
+                    question.lower()
+                ).ratio()
+
+                if similarity > best_score:
+                    best_score = similarity
+                    best_match = market
+
+        if best_match:
+            logger.info(
+                f"Best match (score {best_score:.2f}): "
+                f"{best_match.get('question')}"
+            )
+
+        return best_match
 
     async def get_resolved_markets(self, limit: int = 100, offset: int = 0) -> List[dict]:
         """
