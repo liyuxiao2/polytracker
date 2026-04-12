@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import os
+from typing import List
+
 from app.domains.ingestion.polymarket_client import PolymarketClient
 from app.domains.ingestion.data_ingestion_service import DataIngestionService
 

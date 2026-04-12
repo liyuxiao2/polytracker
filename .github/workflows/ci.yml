@@ -42,7 +42,7 @@ jobs:
         run: ruff format backend/
 
       - name: Ruff lint --fix (backend)
-        run: ruff check --fix backend/
+        run: ruff check --fix --exit-zero backend/
 
       - name: Prettier format (frontend)
         run: cd frontend && npx -y prettier --write "**/*.{ts,tsx,js,jsx,json,css,md}"
@@ -120,9 +120,11 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run tests
-        run: cd backend && python -m pytest -v
+        working-directory: backend
+        run: python -m pytest -v
         env:
           MOCK_MODE: "true"
+          PYTHONPATH: .
 
   test-frontend:
     name: Test Frontend

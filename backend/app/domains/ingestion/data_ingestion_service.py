@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import asyncio
 import uuid
 import os
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import Trade, async_session_maker
 from app.domains.traders.repository import TraderRepository
