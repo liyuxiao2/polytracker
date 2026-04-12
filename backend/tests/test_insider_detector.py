@@ -2,8 +2,8 @@ import pytest
 import numpy as np
 from datetime import datetime, timedelta
 
-from app.models.database import Trade, TraderProfile
-from app.services.insider_detector import InsiderDetector
+from app.core.database import Trade, TraderProfile
+from app.domains.ingestion.insider_detector import InsiderDetector
 
 
 class TestZScoreCalculation:

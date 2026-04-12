@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from app.models.database import Trade, TraderProfile, Market
+from app.core.database import Trade, TraderProfile, Market
 
 
 class TestTradeModel:

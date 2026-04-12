@@ -1,7 +1,7 @@
 import pytest
 from datetime import datetime, timedelta
 
-from app.models.database import Trade, TraderProfile, Market
+from app.core.database import Trade, TraderProfile, Market
 
 
 class TestHealthEndpoint:

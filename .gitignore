@@ -39,3 +39,6 @@ Thumbs.db
 
 # Security - never commit key scripts
 script.py
+
+# Generated artifacts
+discovered_markets.json
