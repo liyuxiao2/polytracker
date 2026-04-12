@@ -2,6 +2,7 @@ import httpx
 import logging
 import os
 from typing import List, Optional
+from difflib import SequenceMatcher
 
 logger = logging.getLogger(__name__)
 
@@ -143,28 +144,54 @@ class PolymarketClient:
             logger.error(f"Error fetching markets list: {e}")
             return []
 
-    async def search_markets(self, query: str, limit: int = 200) -> List[dict]:
+    async def search_markets(
+        self,
+        query: str = "",
+        limit: int = 500,
+        max_pages: int = 5,
+        allow_closed: bool = False
+    ) -> List[dict]:
         """
         Search markets by question text using Gamma API.
         Note: Polymarket doesn't have a search endpoint, so we fetch
         all markets and filter client-side.
         """
+        matches = []
+        statuses = [False, True] if allow_closed else [False]
         try:
-            response = await self.client.get(
-                f"{self.gamma_api_base}/markets",
-                params={"limit": limit, "offset": 0}
-            )
-            response.raise_for_status()
-            all_markets = response.json()
+            for closed_status in statuses:
+                for i in range(max_pages):
+                    params = {
+                        "limit": limit,
+                        "offset": i * limit,
+                        "closed": "true" if closed_status else "false"
+                    }
+                    response = await self.client.get(
+                        f"{self.gamma_api_base}/markets",
+                        params=params
+                    )
+                    response.raise_for_status()
+                    all_markets = response.json()
 
-            # Filter by query (client-side)
-            query_lower = query.lower()
-            matches = [
-                m for m in all_markets
-                if query_lower in m.get("question", "").lower()
-            ]
+                    if not all_markets:
+                        break
 
-            logger.info(f"Found {len(matches)} markets matching '{query}'")
+                    # Filter by query (client-side)
+                    if query:
+                        query_lower = query.lower()
+                        page_matches = [
+                            m for m in all_markets
+                            if query_lower in m.get("question", "").lower()
+                        ]
+                        matches.extend(page_matches)
+                    else:
+                        matches.extend(all_markets)
+
+            if query:
+                logger.info(f"Found {len(matches)} markets matching '{query}'")
+            return matches
+        except httpx.RequestError as e:
+            logger.error(f"Error searching markets: {e}")
             return matches
         except Exception as e:
             logger.error(f"Error searching markets: {e}")
@@ -186,15 +213,20 @@ class PolymarketClient:
         Returns:
             Best matching market with highest similarity score
         """
-        from difflib import SequenceMatcher
-
         best_match = None
         best_score = 0.0
 
-        for keyword in keywords:
-            matches = await self.search_markets(keyword, limit=200)
+        # Fetch a comprehensive list of markets once
+        all_markets = await self.search_markets(
+            query="",
+            limit=500,
+            max_pages=5,
+            allow_closed=allow_closed
+        )
 
-            for market in matches:
+        for keyword in keywords:
+            keyword_lower = keyword.lower()
+            for market in all_markets:
                 question = market.get("question", "")
 
                 # Skip closed markets if not allowed
@@ -204,7 +236,7 @@ class PolymarketClient:
                 # Calculate similarity score using difflib
                 similarity = SequenceMatcher(
                     None,
-                    keyword.lower(),
+                    keyword_lower,
                     question.lower()
                 ).ratio()
 

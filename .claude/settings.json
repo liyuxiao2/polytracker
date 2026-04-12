@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "access to all bash commands, all git commands to the current repo, NOT ALLOWED TO DO ANY COMMANDS OUTSIDE OF THE SCOPE, creating branches, subprocesses in the repo is all allowed."
+    ]
+  }
+}
