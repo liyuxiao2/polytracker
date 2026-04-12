@@ -86,7 +86,7 @@ class DataIngestionService:
 
             z_score, is_flagged = await self.detector.calculate_z_score(
                 wallet_address, trade_size_usd, session,
-                tracked_markets=self.tracked_markets if self.tracked_markets else None
+                tracked_markets=self.tracked_markets
             )
 
             flag_reason = None
@@ -120,7 +120,7 @@ class DataIngestionService:
             if is_flagged:
                 profile = await self.detector.update_trader_profile(
                     wallet_address, session,
-                    tracked_markets=self.tracked_markets if self.tracked_markets else None
+                    tracked_markets=self.tracked_markets
                 )
                 if profile and profile.total_trades < 50:
                     asyncio.create_task(self.backfill_trader_history(wallet_address))
@@ -184,7 +184,7 @@ class DataIngestionService:
                     logger.info(f"[Ingestion] Backfilled {count} trades for {wallet_address}")
                     await self.detector.update_trader_profile(
                         wallet_address, session,
-                        tracked_markets=self.tracked_markets if self.tracked_markets else None
+                        tracked_markets=self.tracked_markets
                     )
                     
         except Exception as e:

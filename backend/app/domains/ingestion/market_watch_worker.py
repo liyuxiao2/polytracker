@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from app.core.database import Market, Trade, async_session_maker
 from app.domains.ingestion.polymarket_client import PolymarketClient
+from app.core.config import get_settings
 import logging
 import statistics
 
@@ -40,7 +41,6 @@ class MarketWatchWorker:
         }
 
         # Market filtering
-        from app.core.config import get_settings
         self.settings = get_settings()
         self.tracked_markets = set(self.settings.tracked_market_id_list)
 
@@ -77,19 +77,20 @@ class MarketWatchWorker:
                 logger.info(f"Fetched {len(markets)} active markets from Polymarket (filtered from {len(all_markets)} total)")
                 return markets
             else:
-                # Fetch ONLY tracked markets
+                # Fetch ONLY tracked markets (in parallel)
+                tasks = [self.client.get_market_info(market_id) for market_id in self.tracked_markets]
+                market_infos = await asyncio.gather(*tasks)
+
                 markets = []
-                for market_id in self.tracked_markets:
-                    market_info = await self.client.get_market_info(market_id)
-                    if market_info:
-                        # Convert to expected format (mimics Gamma API response)
-                        markets.append({
-                            "conditionId": market_id,
-                            "question": market_info.get("question", ""),
-                            "closed": market_info.get("resolved", False),
-                            "tokens": [],  # Token IDs not needed for market watch
-                            "endDateIso": market_info.get("end_date", "")
-                        })
+                for market_info in filter(None, market_infos):
+                    # Convert to expected format (mimics Gamma API response)
+                    markets.append({
+                        "conditionId": market_info.get("id"),
+                        "question": market_info.get("question", ""),
+                        "closed": market_info.get("resolved", False),
+                        "tokens": [],  # Token IDs not needed for market watch
+                        "endDateIso": market_info.get("end_date", "")
+                    })
 
                 logger.info(f"Fetched {len(markets)} tracked markets")
                 return markets
